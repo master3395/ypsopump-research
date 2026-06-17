@@ -1,5 +1,7 @@
 # 11 — The Cambridge Adaptive MPC Algorithm in CamAPS FX: A Comprehensive Technical Analysis
 
+> **Note (master3395 fork):** This analysis targets CamAPS FX **v1.4(190).111**. APK-level changes in **189 vs 192** (Dexcom G7, Liberty FCL, minSdk 33) are documented in [20 — CamAPS APK comparison](20-camaps-apk-189-vs-192.md).
+
 ## Abstract
 
 CamAPS FX implements an adaptive Model Predictive Control (MPC) algorithm developed at the University of Cambridge by Prof. Roman Hovorka and colleagues. The algorithm uses a physiological compartment model of glucose-insulin dynamics (the Hovorka model), an Interacting Multiple Model (IMM) state estimator with **8 parallel sub-models**, and a receding-horizon optimization framework to compute insulin micro-boluses every 8--12 minutes. This document provides a detailed mathematical and clinical analysis of the algorithm's architecture, decision logic, adaptation mechanisms, and safety systems, synthesized from published research, regulatory submissions, and reverse engineering of the CamAPS FX native library (`libd91238_dumped.so`, ARM64 ELF). Concrete parameter values were extracted directly from the binary's data section and decompiled code using Ghidra 12.0.3.

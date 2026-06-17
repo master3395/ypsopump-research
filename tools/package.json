@@ -1,0 +1,11 @@
+{
+  "name": "ypsopump-research-tools",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build-site": "node build-site.mjs"
+  },
+  "dependencies": {
+    "marked": "^15.0.6"
+  }
+}

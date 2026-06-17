@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>05 — Backend Communication: gRPC, Cloud Services &amp; APIs | YpsoPump Research</title>
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <a href="../index.html">YpsoPump Research</a>
+    <span class="tagline">#WeAreNotWaiting</span>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="Documentation"><h2>Pump and BLE</h2><ul><li><a href="01-hardware.html">01 — hardware</a></li><li><a href="02-ble-protocol.html">02 — ble protocol</a></li><li><a href="03-encryption.html">03 — encryption</a></li><li><a href="04-key-exchange.html">04 — key exchange</a></li></ul><h2>Backend and security</h2><ul><li><a href="05-backend-communication.html" class="active">05 — backend communication</a></li><li><a href="06-closed-loop-algorithm.html">06 — closed loop algorithm</a></li><li><a href="07-obfuscation.html">07 — obfuscation</a></li><li><a href="08-security-findings.html">08 — security findings</a></li><li><a href="09-bypass-options.html">09 — bypass options</a></li><li><a href="10-legal-analysis.html">10 — legal analysis</a></li></ul><h2>CamAPS FX</h2><ul><li><a href="11-camaps-algorithm-analysis.html">11 — camaps algorithm analysis</a></li><li><a href="12-camaps-sideload-bypass.html">12 — camaps sideload bypass</a></li><li><a href="13-play-integrity-bypass-success.html">13 — play integrity bypass success</a></li><li><a href="20-camaps-apk-189-vs-192.html">20 — camaps apk 189 vs 192</a></li><li><a href="21-camaps-liberty-availability.html">21 — camaps liberty availability</a></li><li><a href="22-cgm-error-codes-reference.html">22 — cgm error codes reference</a></li></ul><h2>mylife app</h2><ul><li><a href="14-mylife-app-overview.html">14 — mylife app overview</a></li><li><a href="15-mylife-app-security.html">15 — mylife app security</a></li><li><a href="16-mylife-app-proregia-protocol.html">16 — mylife app proregia protocol</a></li><li><a href="17-mylife-app-components.html">17 — mylife app components</a></li><li><a href="18-mylife-app-bypass-plan.html">18 — mylife app bypass plan</a></li><li><a href="19-key-lifecycle-pump-rotation.html">19 — key lifecycle pump rotation</a></li></ul><h2>Guides</h2><ul><li><a href="../guides/building-a-driver-app.html">building a driver app</a></li><li><a href="../guides/frida-key-extraction.html">frida key extraction</a></li><li><a href="../guides/ble-sniffing-setup.html">ble sniffing setup</a></li></ul><h2>More</h2><ul><li><a href="../index.html">Home</a></li><li><a href="../data/index.html">Data / CSV</a></li><li><a href="https://github.com/master3395/ypsopump-research">GitHub</a></li></ul></nav>
+    <div class="main">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / 05 — Backend Communication: gRPC, Cloud Services &amp; APIs</div>
+      
+      <article class="content"><h1>05 — Backend Communication: gRPC, Cloud Services &amp; APIs</h1>
+<h2>Overview</h2>
+<p>CamAPS FX communicates with multiple backend systems for key exchange, data synchronisation, CGM integration and firmware updates. This document maps all discovered endpoints, protocols and credentials.</p>
+<h2>ProRegia gRPC Backend (Pump Key Exchange)</h2>
+<h3>Endpoint</h3>
+<pre><code>connect.cam.pr.sec01.proregia.io:443
+</code></pre>
+<p><strong>No certificate pinning</strong> — standard TLS via <code>ManagedChannelBuilder</code>.</p>
+<h3>gRPC Services (10 discovered)</h3>
+<p>Full namespace: <code>Proregia.Bluetooth.Contracts.Proto.*</code></p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Service</th>
+<th>gRPC Class</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td><code>EncryptCommanderKey</code></td>
+<td><code>EncryptCommanderKeyGrpc</code></td>
+<td>Commander key exchange (secondary app role)</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>EncryptKey</code></td>
+<td><code>EncryptKeyGrpc</code></td>
+<td><strong>Primary key exchange</strong> (Step 5 of 9-step protocol)</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>ValidateKeyAttestation</code></td>
+<td><code>ValidateKeyAttestationGrpc</code></td>
+<td>Key attestation validation</td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>ValidateKeyAttestationJwt</code></td>
+<td><code>ValidateKeyAttestationJwtGrpc</code></td>
+<td>JWT-based key attestation</td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>NonceForKeyAttestation</code></td>
+<td><code>NonceForKeyAttestationJwtGrpc</code></td>
+<td>Nonce request (Step 3)</td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>SignJwt</code></td>
+<td><code>SignJwtGrpc</code></td>
+<td>Server-side JWT signing</td>
+</tr>
+<tr>
+<td>7</td>
+<td><code>FirmwareUpdateCheck</code></td>
+<td><code>FirmwareUpdateCheckGrpc</code></td>
+<td>Check for firmware updates</td>
+</tr>
+<tr>
+<td>8</td>
+<td><code>GetFirmwareForPump</code></td>
+<td><code>GetFirmwareForPumpGrpc</code></td>
+<td>Download firmware image</td>
+</tr>
+<tr>
+<td>9</td>
+<td><code>FirmwareUpdateConfirmation</code></td>
+<td><code>FirmwareUpdateConfirmationGrpc</code></td>
+<td>Confirm update installation</td>
+</tr>
+<tr>
+<td>10</td>
+<td><code>LogEvent</code></td>
+<td><code>LogEventGrpc</code></td>
+<td>Remote event logging</td>
+</tr>
+</tbody></table>
+<h3>Key Protobuf Messages</h3>
+<pre><code class="language-protobuf">// Key Exchange (corrected — 8 fields including Metrics)
+message EncryptKeyRequest {
+    string challenge = 1;                    // 32 bytes (uppercase hex via extractServiceName.write)
+    string pump_public_key = 2;              // 32 bytes Curve25519 (uppercase hex)
+    string app_public_key = 3;               // 32 bytes Curve25519 (uppercase hex)
+    string bt_address = 4;                   // BT MAC address (uppercase hex)
+    string message_attestation_object = 5;   // Google Play Integrity token (JWS string)
+    string nonce = 6;                        // 24 bytes server nonce (uppercase hex)
+    Metrics metrics = 7;                     // Device and app metadata (see below)
+    string device_id = 8;                    // UUID string from SharedPreferences &quot;proregia_prefs&quot;
+}
+
+message Metrics {
+    string platform = 1;              // &quot;Android&quot; (hardcoded via obfuscated string)
+    string model = 2;                 // Build.MODEL (e.g. &quot;SM-A226B&quot;)
+    string os_type = 3;               // Build.VERSION.SDK_INT as string (e.g. &quot;33&quot;)
+    string os_version = 4;            // Build.VERSION.RELEASE (e.g. &quot;13&quot;)
+    string manufacturer = 5;          // Build.MANUFACTURER (e.g. &quot;samsung&quot;)
+    string device_serial = 6;         // Hardcoded &quot;no Serial&quot;
+    string application_name = 7;      // context.getApplicationInfo().loadLabel() (e.g. &quot;mylife CamAPS FX&quot;)
+    string application_package = 8;   // context.getApplicationInfo().packageName
+    string library_version = 9;       // ProBluetooth SDK version (KmsEnvelopeAeadKeyBuilder.write())
+    bool xamarin = 10;                // false (Android native, not Xamarin)
+}
+
+message EncryptKeyResponse {
+    bytes encrypted_bytes = 1;  // 116 bytes
+}
+
+// Firmware
+message GetFirmwareRequest {
+    string pump_serial = 1;
+    string current_version = 2;
+}
+
+message FirmwareImage {
+    bytes data = 1;
+    FirmwareMetadata metadata = 2;
+}
+
+message FirmwareMetadata {
+    string version = 1;
+    string checksum = 2;
+    int64 size = 3;
+}
+
+message FirmwareUpdatedResponse {
+    bool success = 1;
+}
+</code></pre>
+<h2>AWS Backend (Data Storage)</h2>
+<h3>DynamoDB</h3>
+<table>
+<thead>
+<tr>
+<th>Table</th>
+<th>Hash Key</th>
+<th>Notable Fields</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>StoredSettings</code></td>
+<td><code>userId</code></td>
+<td><code>alertSettingsEncrypted</code>, <code>algorithmDataBlock</code>, <code>dataKey</code>, <code>userEmail</code>, <code>ttl</code></td>
+</tr>
+</tbody></table>
+<h3>AWS Services Used</h3>
+<table>
+<thead>
+<tr>
+<th>Service</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Cognito</strong></td>
+<td>Identity Provider / User Authentication (<code>CognitoUser25</code> class)</td>
+</tr>
+<tr>
+<td><strong>STS</strong></td>
+<td>Temporary credential generation</td>
+</tr>
+<tr>
+<td><strong>S3</strong></td>
+<td>Data storage (CGM data, logs, exports)</td>
+</tr>
+<tr>
+<td><strong>DynamoDB</strong></td>
+<td>Settings persistence</td>
+</tr>
+</tbody></table>
+<h3>Authentication Flow</h3>
+<pre><code>1. User enters email + password
+2. SRP (Secure Remote Password) handshake with Cognito
+3. Cognito returns JWT tokens (id, access, refresh)
+4. STS exchanges JWT for temporary AWS credentials
+5. App accesses DynamoDB / S3 with temp credentials
+</code></pre>
+<h2>MyLife Cloud API (Azure API Management)</h2>
+<h3>Required HTTP Headers</h3>
+<table>
+<thead>
+<tr>
+<th>Header</th>
+<th>Min Length</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>Authorization</code></td>
+<td>10 chars</td>
+<td><code>Bearer &lt;JWT token&gt;</code></td>
+</tr>
+<tr>
+<td><code>Gateway-JWT-Header</code></td>
+<td>—</td>
+<td>Separate gateway JWT</td>
+</tr>
+<tr>
+<td><code>Subscription-Key</code></td>
+<td>32 chars</td>
+<td>Azure APIM subscription key</td>
+</tr>
+<tr>
+<td><code>Public-Key-Header</code></td>
+<td>32 chars</td>
+<td>E2E encryption public key</td>
+</tr>
+<tr>
+<td><code>Target-Country-Header</code></td>
+<td>2 chars</td>
+<td>Regional routing (e.g. &quot;DE&quot;, &quot;GB&quot;)</td>
+</tr>
+</tbody></table>
+<h3>Data Sync Protocol</h3>
+<pre><code>SyncDecryptedDTO
+    → Encrypt with Public-Key-Header
+    → SyncEncryptedDTO
+    → Upload to MyLife Cloud
+    → Stored in patient&#39;s account
+</code></pre>
+<h2>Dexcom Integration (OAuth2 / OIDC)</h2>
+<h3>Hardcoded Configuration (in cleartext!)</h3>
+<p>All Dexcom OAuth2 configuration is hardcoded in cleartext in <code>UAMTokenActivity.java</code> (DexGuard-obfuscated class name varies by version):</p>
+<ul>
+<li><strong>Authorization, Token &amp; UserInfo endpoints</strong> — point to <code>.dexcomdev.com</code> (development/staging domain, not production!)</li>
+<li><strong>Client ID</strong> — hardcoded UUID in cleartext</li>
+<li><strong>Client Secret</strong> — trivial hardcoded string in cleartext (literally the word &quot;secret&quot;)</li>
+<li><strong>Redirect URI</strong> — <code>camaps://redirect_uri</code></li>
+<li><strong>Scopes</strong> — <code>AccountManagement phone profile DataShare openid offline_access</code></li>
+</ul>
+<h3>Security Issues</h3>
+<ol>
+<li><strong><code>.dexcomdev.com</code></strong> — Development/staging environment URLs shipped in production app (visible in decompiled <code>UAMTokenActivity.java</code>)</li>
+<li><strong>Client secret</strong> — Trivially exploitable hardcoded cleartext value</li>
+<li><strong>No dynamic configuration</strong> — hardcoded values cannot be rotated without app update</li>
+</ol>
+<h3>Supported CGM Types</h3>
+<table>
+<thead>
+<tr>
+<th>Enum</th>
+<th>CGM</th>
+<th>ID</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>DEXCOM_G6</code></td>
+<td>Dexcom G6</td>
+<td>140</td>
+</tr>
+<tr>
+<td><code>DEXCOM_G7</code></td>
+<td>Dexcom G7</td>
+<td>141</td>
+</tr>
+<tr>
+<td><code>LIBRE_3</code></td>
+<td>FreeStyle Libre 3</td>
+<td>142</td>
+</tr>
+<tr>
+<td><code>LIBRE_3_PLUS</code></td>
+<td>FreeStyle Libre 3+</td>
+<td>143</td>
+</tr>
+</tbody></table>
+<h2>Glooko / Diasend Integration</h2>
+<h3>OAuth2 Authentication</h3>
+<pre><code>client_id:     (obfuscated via DexGuard)
+client_secret: (obfuscated via DexGuard)
+login:         email + password
+</code></pre>
+<h3>Device Information Sent</h3>
+<pre><code class="language-json">{
+    &quot;applicationVersion&quot;: &quot;1.4&quot;,
+    &quot;buildNumber&quot;: &quot;190&quot;,
+    &quot;device&quot;: &quot;Pixel 7&quot;,
+    &quot;deviceId&quot;: &quot;...&quot;,
+    &quot;gitHash&quot;: &quot;...&quot;,
+    &quot;os&quot;: &quot;Android 14&quot;
+}
+</code></pre>
+<h3>Security Check</h3>
+<p>The Glooko authentication class performs root detection:</p>
+<ul>
+<li>Checks for <code>/system/xbin/su</code></li>
+<li>Checks for <code>Superuser.apk</code></li>
+</ul>
+<h2>Firebase Configuration</h2>
+<p>All Firebase configuration values are stored in cleartext in <code>res/values/strings.xml</code> within the APK:</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Location</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Google API Key</td>
+<td><code>strings.xml</code> → <code>google_api_key</code> (cleartext)</td>
+</tr>
+<tr>
+<td>Firebase DB URL</td>
+<td><code>strings.xml</code> → <code>firebase_database_url</code> (cleartext)</td>
+</tr>
+<tr>
+<td>GCP Project</td>
+<td>Derivable from Firebase DB URL</td>
+</tr>
+<tr>
+<td>App ID</td>
+<td><code>strings.xml</code> → <code>google_app_id</code> (cleartext)</td>
+</tr>
+<tr>
+<td>GCM Sender ID</td>
+<td><code>strings.xml</code> → <code>gcm_defaultSenderId</code> (cleartext)</td>
+</tr>
+<tr>
+<td>Storage Bucket</td>
+<td><code>strings.xml</code> → <code>google_storage_bucket</code> (cleartext)</td>
+</tr>
+</tbody></table>
+<h3>Firebase Services Used</h3>
+<table>
+<thead>
+<tr>
+<th>Service</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Crashlytics</td>
+<td>Crash reporting</td>
+</tr>
+<tr>
+<td>Performance Monitoring</td>
+<td>App performance telemetry</td>
+</tr>
+<tr>
+<td>Remote Config</td>
+<td>Dynamic feature flags</td>
+</tr>
+<tr>
+<td>Cloud Messaging (FCM)</td>
+<td>Push notifications</td>
+</tr>
+<tr>
+<td>Analytics</td>
+<td>Usage analytics</td>
+</tr>
+<tr>
+<td>Sessions</td>
+<td>Session tracking</td>
+</tr>
+</tbody></table>
+<h2>Network Architecture Diagram</h2>
+<pre><code>┌──────────────┐
+│  CamAPS FX   │
+│   (Android)  │
+└──────┬───────┘
+       │
+       ├──── BLE ──── YpsoPump
+       │
+       ├──── gRPC/TLS ──── ProRegia (connect.cam.pr.sec01.proregia.io)
+       │                         └── Utimaco Cloud HSM
+       │
+       ├──── HTTPS ──── MyLife Cloud (Azure APIM)
+       │
+       ├──── HTTPS ──── AWS (Cognito, DynamoDB, S3, STS)
+       │
+       ├──── OAuth2 ──── Dexcom (.dexcomdev.com)
+       │
+       ├──── OAuth2 ──── Glooko / Diasend
+       │
+       └──── HTTPS ──── Firebase (crashlytics, analytics, etc.)
+</code></pre>
+<h2>Relevance for Third-Party Driver</h2>
+<p>For building a driver app, only the <strong>ProRegia gRPC</strong> backend is relevant (for key exchange). All other backends handle data sync, CGM, and analytics — none are required for pump communication.</p>
+<p><strong>Alternative</strong>: Using the Frida pump-faking approach, even the ProRegia backend can be avoided entirely — CamAPS performs the key exchange, and the extracted shared key is used by the custom driver.</p>
+</article>
+      <footer class="site-footer">
+        <p><strong>Research only.</strong> Not a medical device. Insulin dosing errors can cause severe harm or death.</p>
+        <p>Based on <a href="https://github.com/SandraK82/ypsopump-research">SandraK82/ypsopump-research</a> (MIT). Enhanced fork by <a href="https://github.com/master3395/ypsopump-research">master3395</a>.</p>
+      </footer>
+    </div>
+  </div>
+</body>
+</html>

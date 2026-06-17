@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>01 — Hardware Analysis: YpsoPump | YpsoPump Research</title>
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <a href="../index.html">YpsoPump Research</a>
+    <span class="tagline">#WeAreNotWaiting</span>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="Documentation"><h2>Pump and BLE</h2><ul><li><a href="01-hardware.html" class="active">01 — hardware</a></li><li><a href="02-ble-protocol.html">02 — ble protocol</a></li><li><a href="03-encryption.html">03 — encryption</a></li><li><a href="04-key-exchange.html">04 — key exchange</a></li></ul><h2>Backend and security</h2><ul><li><a href="05-backend-communication.html">05 — backend communication</a></li><li><a href="06-closed-loop-algorithm.html">06 — closed loop algorithm</a></li><li><a href="07-obfuscation.html">07 — obfuscation</a></li><li><a href="08-security-findings.html">08 — security findings</a></li><li><a href="09-bypass-options.html">09 — bypass options</a></li><li><a href="10-legal-analysis.html">10 — legal analysis</a></li></ul><h2>CamAPS FX</h2><ul><li><a href="11-camaps-algorithm-analysis.html">11 — camaps algorithm analysis</a></li><li><a href="12-camaps-sideload-bypass.html">12 — camaps sideload bypass</a></li><li><a href="13-play-integrity-bypass-success.html">13 — play integrity bypass success</a></li><li><a href="20-camaps-apk-189-vs-192.html">20 — camaps apk 189 vs 192</a></li><li><a href="21-camaps-liberty-availability.html">21 — camaps liberty availability</a></li><li><a href="22-cgm-error-codes-reference.html">22 — cgm error codes reference</a></li></ul><h2>mylife app</h2><ul><li><a href="14-mylife-app-overview.html">14 — mylife app overview</a></li><li><a href="15-mylife-app-security.html">15 — mylife app security</a></li><li><a href="16-mylife-app-proregia-protocol.html">16 — mylife app proregia protocol</a></li><li><a href="17-mylife-app-components.html">17 — mylife app components</a></li><li><a href="18-mylife-app-bypass-plan.html">18 — mylife app bypass plan</a></li><li><a href="19-key-lifecycle-pump-rotation.html">19 — key lifecycle pump rotation</a></li></ul><h2>Guides</h2><ul><li><a href="../guides/building-a-driver-app.html">building a driver app</a></li><li><a href="../guides/frida-key-extraction.html">frida key extraction</a></li><li><a href="../guides/ble-sniffing-setup.html">ble sniffing setup</a></li></ul><h2>More</h2><ul><li><a href="../index.html">Home</a></li><li><a href="../data/index.html">Data / CSV</a></li><li><a href="https://github.com/master3395/ypsopump-research">GitHub</a></li></ul></nav>
+    <div class="main">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / 01 — Hardware Analysis: YpsoPump</div>
+      
+      <article class="content"><h1>01 — Hardware Analysis: YpsoPump</h1>
+<h2>Overview</h2>
+<p>The <strong>mylife YpsoPump</strong> (Ypsomed AG, Switzerland) is a patch-style insulin pump communicating over Bluetooth Low Energy (BLE). This document summarises hardware findings obtained through FCC filings, regulatory databases and reverse engineering of the companion app <strong>CamAPS FX</strong> (v1.4(190).111).</p>
+<h2>Main MCU: STM32F051</h2>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Manufacturer</strong></td>
+<td>STMicroelectronics</td>
+</tr>
+<tr>
+<td><strong>Core</strong></td>
+<td>ARM Cortex-M0</td>
+</tr>
+<tr>
+<td><strong>Flash</strong></td>
+<td>64 KB</td>
+</tr>
+<tr>
+<td><strong>RAM</strong></td>
+<td>8 KB</td>
+</tr>
+<tr>
+<td><strong>Operating voltage</strong></td>
+<td>2.0 – 3.6 V</td>
+</tr>
+<tr>
+<td><strong>Package</strong></td>
+<td>LQFP-48</td>
+</tr>
+</tbody></table>
+<p>The STM32F051 handles all pump control logic: motor driving, occlusion detection, reservoir level sensing, button input and alarm generation. The pump&#39;s Curve25519 public key is burned into flash at manufacturing and <strong>never changes</strong> across reboots or resets.</p>
+<h3>SWD Debug Interface</h3>
+<p>The STM32F051 exposes a Serial Wire Debug (SWD) port. If not permanently disabled via the Read-Out Protection (RDP) fuses, this could allow:</p>
+<ul>
+<li>Full flash memory read-out (including PSK and pump public key)</li>
+<li>Live RAM inspection during BLE communication</li>
+<li>Firmware replacement / patching</li>
+</ul>
+<p><strong>Status</strong>: RDP level has not been verified on a live device. FCC teardown photos show test pads consistent with SWD access.</p>
+<h2>BLE Radio: EM Microelectronic EM9301</h2>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Manufacturer</strong></td>
+<td>EM Microelectronic (Swatch Group)</td>
+</tr>
+<tr>
+<td><strong>Standard</strong></td>
+<td>Bluetooth 4.0 Low Energy</td>
+</tr>
+<tr>
+<td><strong>Role</strong></td>
+<td>Peripheral only</td>
+</tr>
+<tr>
+<td><strong>TX Power</strong></td>
+<td>–20 dBm to +4 dBm (configurable)</td>
+</tr>
+<tr>
+<td><strong>Frequency</strong></td>
+<td>2402 – 2480 MHz</td>
+</tr>
+<tr>
+<td><strong>Modulation</strong></td>
+<td>GFSK</td>
+</tr>
+<tr>
+<td><strong>Interface to MCU</strong></td>
+<td>SPI</td>
+</tr>
+<tr>
+<td><strong>Sleep current</strong></td>
+<td>&lt; 1 µA</td>
+</tr>
+</tbody></table>
+<p>The EM9301 is a BLE-only radio (no Classic Bluetooth). It is controlled entirely by the STM32F051 over SPI — the STM32 implements the GATT server, advertisement logic and all protocol state machines. The EM9301 is essentially a dumb radio transceiver.</p>
+<h3>Key Implications</h3>
+<ol>
+<li><strong>No BLE 4.2+ features</strong> — no LE Secure Connections, no extended advertisements</li>
+<li><strong>All security is application-layer</strong> — BLE pairing provides no meaningful protection; XChaCha20-Poly1305 handles everything</li>
+<li><strong>SPI sniffing</strong> between STM32 and EM9301 would reveal pre-encryption plaintext</li>
+</ol>
+<h2>FCC Filing &amp; RF Specifications</h2>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>FCC ID</strong></td>
+<td>(available via FCC search for Ypsomed)</td>
+</tr>
+<tr>
+<td><strong>Frequency range</strong></td>
+<td>2402 – 2480 MHz</td>
+</tr>
+<tr>
+<td><strong>Modulation</strong></td>
+<td>GFSK (BT = 0.5)</td>
+</tr>
+<tr>
+<td><strong>Data rate</strong></td>
+<td>1 Mbps</td>
+</tr>
+<tr>
+<td><strong>Max TX power</strong></td>
+<td>+4 dBm</td>
+</tr>
+<tr>
+<td><strong>Antenna</strong></td>
+<td>Chip / PCB trace antenna</td>
+</tr>
+<tr>
+<td><strong>Test standard</strong></td>
+<td>FCC Part 15.247</td>
+</tr>
+</tbody></table>
+<p>FCC test reports include internal photographs showing the PCB layout with clearly identifiable:</p>
+<ul>
+<li>STM32F051 (main MCU)</li>
+<li>EM9301 (BLE radio)</li>
+<li>Crystal oscillator (32 MHz for EM9301, 8 MHz for STM32)</li>
+<li>Motor driver circuitry</li>
+<li>Battery connector</li>
+<li>Test pads (SWD and SPI)</li>
+</ul>
+<h2>Power Supply</h2>
+<p>The YpsoPump uses a single <strong>AAA 1.5V alkaline battery</strong> (user-replaceable). A boost converter raises the voltage to 3.3V for the MCU and BLE radio. Battery level is reported as a percentage via BLE command index 29 (part of the Control Service).</p>
+<h2>Reservoir</h2>
+<ul>
+<li><strong>Capacity</strong>: 1.6 mL (160 units at U-100)</li>
+<li><strong>Type</strong>: Pre-filled cartridge (mylife YpsoPump Reservoir)</li>
+<li><strong>Detection</strong>: Mechanical plunger position sensor</li>
+<li><strong>Minimum bolus step</strong>: 0.1 U</li>
+<li><strong>Minimum basal step</strong>: 0.01 U/h</li>
+</ul>
+<h2>PCB Topology (Reconstructed)</h2>
+<pre><code>┌─────────────────────────────────────────┐
+│                                         │
+│   ┌──────────┐     SPI     ┌─────────┐ │
+│   │ STM32F051│◄───────────►│ EM9301  │ │
+│   │ (MCU)    │             │ (BLE)   │ │
+│   └────┬─────┘             └────┬────┘ │
+│        │                        │      │
+│   SWD  │  GPIO/ADC         Antenna     │
+│   Pads │                    Trace      │
+│        ▼                               │
+│   ┌─────────┐  ┌────────┐  ┌───────┐  │
+│   │  Motor  │  │ Button │  │Battery│  │
+│   │ Driver  │  │  Input │  │ Sense │  │
+│   └─────────┘  └────────┘  └───────┘  │
+│                                         │
+└─────────────────────────────────────────┘
+</code></pre>
+<h2>Security Observations</h2>
+<ol>
+<li><p><strong>Static public key</strong>: The pump&#39;s Curve25519 public key is factory-burned and never rotated. If extracted via SWD, it enables offline analysis of captured BLE traffic.</p>
+</li>
+<li><p><strong>No hardware security module</strong>: Unlike modern medical devices, the YpsoPump relies entirely on the STM32F051&#39;s flash for key storage. There is no dedicated secure element.</p>
+</li>
+<li><p><strong>Pre-Shared Key (PSK)</strong>: Each pump has a 256-bit PSK shared with the Utimaco Cloud HSM. This PSK is used by the backend to generate the 116-byte key exchange payload. If extracted via SWD, a completely offline key exchange becomes possible.</p>
+</li>
+<li><p><strong>BLE 4.0 only</strong>: No LE Secure Connections means BLE-level pairing offers minimal protection. The application-layer XChaCha20-Poly1305 is the sole security boundary.</p>
+</li>
+</ol>
+<h2>References</h2>
+<ul>
+<li>STM32F051 datasheet: <a href="https://www.st.com/en/microcontrollers-microprocessors/stm32f051.html">st.com</a></li>
+<li>EM9301 datasheet: <a href="https://www.emmicroelectronic.com/product/standard-protocols-702/em9301">emmicroelectronic.com</a></li>
+<li>FCC OET Equipment Authorization Search: <a href="https://www.fcc.gov/oet/ea/fccid">fcc.gov</a></li>
+</ul>
+</article>
+      <footer class="site-footer">
+        <p><strong>Research only.</strong> Not a medical device. Insulin dosing errors can cause severe harm or death.</p>
+        <p>Based on <a href="https://github.com/SandraK82/ypsopump-research">SandraK82/ypsopump-research</a> (MIT). Enhanced fork by <a href="https://github.com/master3395/ypsopump-research">master3395</a>.</p>
+      </footer>
+    </div>
+  </div>
+</body>
+</html>

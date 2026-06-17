@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>07 — Obfuscation: DexGuard Analysis | YpsoPump Research</title>
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <a href="../index.html">YpsoPump Research</a>
+    <span class="tagline">#WeAreNotWaiting</span>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="Documentation"><h2>Pump and BLE</h2><ul><li><a href="01-hardware.html">01 — hardware</a></li><li><a href="02-ble-protocol.html">02 — ble protocol</a></li><li><a href="03-encryption.html">03 — encryption</a></li><li><a href="04-key-exchange.html">04 — key exchange</a></li></ul><h2>Backend and security</h2><ul><li><a href="05-backend-communication.html">05 — backend communication</a></li><li><a href="06-closed-loop-algorithm.html">06 — closed loop algorithm</a></li><li><a href="07-obfuscation.html" class="active">07 — obfuscation</a></li><li><a href="08-security-findings.html">08 — security findings</a></li><li><a href="09-bypass-options.html">09 — bypass options</a></li><li><a href="10-legal-analysis.html">10 — legal analysis</a></li></ul><h2>CamAPS FX</h2><ul><li><a href="11-camaps-algorithm-analysis.html">11 — camaps algorithm analysis</a></li><li><a href="12-camaps-sideload-bypass.html">12 — camaps sideload bypass</a></li><li><a href="13-play-integrity-bypass-success.html">13 — play integrity bypass success</a></li><li><a href="20-camaps-apk-189-vs-192.html">20 — camaps apk 189 vs 192</a></li><li><a href="21-camaps-liberty-availability.html">21 — camaps liberty availability</a></li><li><a href="22-cgm-error-codes-reference.html">22 — cgm error codes reference</a></li></ul><h2>mylife app</h2><ul><li><a href="14-mylife-app-overview.html">14 — mylife app overview</a></li><li><a href="15-mylife-app-security.html">15 — mylife app security</a></li><li><a href="16-mylife-app-proregia-protocol.html">16 — mylife app proregia protocol</a></li><li><a href="17-mylife-app-components.html">17 — mylife app components</a></li><li><a href="18-mylife-app-bypass-plan.html">18 — mylife app bypass plan</a></li><li><a href="19-key-lifecycle-pump-rotation.html">19 — key lifecycle pump rotation</a></li></ul><h2>Guides</h2><ul><li><a href="../guides/building-a-driver-app.html">building a driver app</a></li><li><a href="../guides/frida-key-extraction.html">frida key extraction</a></li><li><a href="../guides/ble-sniffing-setup.html">ble sniffing setup</a></li></ul><h2>More</h2><ul><li><a href="../index.html">Home</a></li><li><a href="../data/index.html">Data / CSV</a></li><li><a href="https://github.com/master3395/ypsopump-research">GitHub</a></li></ul></nav>
+    <div class="main">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / 07 — Obfuscation: DexGuard Analysis</div>
+      
+      <article class="content"><h1>07 — Obfuscation: DexGuard Analysis</h1>
+<h2>Overview</h2>
+<p>CamAPS FX uses <strong>DexGuard</strong> (not standard ProGuard/R8) for extremely aggressive code obfuscation. This document details the obfuscation techniques discovered during reverse engineering and provides a partial class deobfuscation mapping.</p>
+<h2>Obfuscation Tool: DexGuard</h2>
+<p>DexGuard is a commercial Android obfuscation tool by Guardsquare, going far beyond ProGuard:</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>ProGuard</th>
+<th>DexGuard</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Class/method renaming</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>String encryption</td>
+<td>No</td>
+<td><strong>Yes</strong></td>
+</tr>
+<tr>
+<td>Control-flow obfuscation</td>
+<td>No</td>
+<td><strong>Yes</strong></td>
+</tr>
+<tr>
+<td>Reflection wrapping</td>
+<td>No</td>
+<td><strong>Yes</strong></td>
+</tr>
+<tr>
+<td>Native code protection</td>
+<td>No</td>
+<td><strong>Yes</strong></td>
+</tr>
+<tr>
+<td>Anti-tamper checks</td>
+<td>No</td>
+<td><strong>Yes</strong></td>
+</tr>
+<tr>
+<td>Resource encryption</td>
+<td>No</td>
+<td><strong>Yes</strong></td>
+</tr>
+</tbody></table>
+<h2>Technique 1: Class Renaming</h2>
+<p>Real classes are renamed to Android framework class names, making static analysis extremely confusing:</p>
+<h3>Deobfuscated Class Mapping</h3>
+<table>
+<thead>
+<tr>
+<th>Obfuscated Name</th>
+<th>Actual Purpose</th>
+<th>Key Evidence</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>KmsAeadKeyOrBuilder</code></td>
+<td><strong>PumpBleHandler</strong></td>
+<td>BLE read/writeCharacteristic, key exchange orchestration</td>
+</tr>
+<tr>
+<td><code>KmsEnvelopeAeadKeyBuilder</code></td>
+<td><strong>ProBluetoothConfig</strong></td>
+<td>BLE configuration, Parcelable implementation</td>
+</tr>
+<tr>
+<td><code>MediaDescriptionCompat</code></td>
+<td><strong>BackendService</strong></td>
+<td>gRPC client, <code>connect.cam.pr.sec01.proregia.io</code> reference</td>
+</tr>
+<tr>
+<td><code>write</code></td>
+<td><strong>CryptoWrapper</strong></td>
+<td>Lazysodium calls, XChaCha20-Poly1305 encrypt/decrypt</td>
+</tr>
+<tr>
+<td><code>ensureEntryIsMutable</code></td>
+<td><strong>EncryptedAppKeyStore</strong></td>
+<td>EncryptedSharedPreferences wrapper</td>
+</tr>
+<tr>
+<td><code>clearDekTemplate</code></td>
+<td><strong>KeyExchangeStateListener</strong></td>
+<td>Step update interface/callback</td>
+</tr>
+<tr>
+<td><code>HmacKey1</code></td>
+<td><strong>LazySodium-Wrapper</strong></td>
+<td>Abstraction over Sodium JNA calls</td>
+</tr>
+<tr>
+<td><code>a.setCheckable</code></td>
+<td><strong>MainActivity</strong></td>
+<td>Main activity lifecycle</td>
+</tr>
+<tr>
+<td><code>a.setSupportButtonTintMode</code></td>
+<td><strong>SelectCGM Activity</strong></td>
+<td>CGM selection screen</td>
+</tr>
+<tr>
+<td><code>getMaximumBolusSuggestion</code></td>
+<td><strong>CryptoHelper</strong></td>
+<td>RSA/AES/PBKDF2 implementations</td>
+</tr>
+<tr>
+<td><code>S3ExecutionContext</code></td>
+<td><strong>StringDecryptor</strong></td>
+<td>Central string decryption dispatch</td>
+</tr>
+<tr>
+<td><code>setAlertVersion</code></td>
+<td><strong>OkHttp Client Setup</strong></td>
+<td>HTTP client configuration</td>
+</tr>
+<tr>
+<td><code>setPumpType</code></td>
+<td><strong>OkHttp Client Setup</strong></td>
+<td>HTTP client configuration (variant)</td>
+</tr>
+</tbody></table>
+<h2>Technique 2: String Encryption</h2>
+<p>All string constants are encrypted and decrypted at runtime. Four distinct methods were identified:</p>
+<h3>Method 1: Byte-Array XOR (<code>$$c</code> method)</h3>
+<p>Each class has a private static byte array seed and a decryption method:</p>
+<pre><code class="language-java">private static final byte[] $$a = {0x12, 0x34, ...};  // per-class seed
+private static final int $$b = 42;                      // offset
+
+private static String $$c(int start, int length) {
+    // XOR-based stream cipher using $$a as key
+    // Parameters control starting position and length
+    // Returns decrypted string
+}
+</code></pre>
+<p>Each class has its own <code>$$a</code> seed and <code>$$b</code> offset. The <code>$$c</code> method signature varies per class.</p>
+<h3>Method 2: Char-Array Reflection</h3>
+<pre><code class="language-java">// Encrypted char arrays
+static final char[] data = {36299, 8591, 54642, 35014, ...};
+
+// Decrypted via reflection through S3ExecutionContext
+String result = S3ExecutionContext.write(index);
+</code></pre>
+<h3>Method 3: S3ExecutionContext Central Dispatch</h3>
+<p>The <code>S3ExecutionContext</code> class serves as the central string decryption hub:</p>
+<pre><code class="language-java">// Simple form
+public static String write(int index);
+
+// Complex form with type dispatch
+public static Object b(int index, int subIndex, char type,
+                        int arg, boolean flag, String str,
+                        Class[] classes);
+</code></pre>
+<p>This class uses reflection internally, reading encrypted data from the APK&#39;s resources and decrypting on demand.</p>
+<h3>Method 4: XTEA-based Encryption</h3>
+<p>Found in <code>setAlertVersion.java</code>:</p>
+<pre><code class="language-java">// 16-round XTEA (eXtended Tiny Encryption Algorithm)
+// Used for string constants in OkHttp configuration classes
+</code></pre>
+<h2>Technique 3: Control-Flow Obfuscation</h2>
+<p>Fake branches are inserted throughout the code:</p>
+<pre><code class="language-java">// Original:
+doSomething();
+
+// Obfuscated:
+int i = someValue;
+if (i % 2 == 0) {
+    throw null;  // Never reached — dead code
+}
+doSomething();
+if (i % 3 == 0) {
+    throw null;  // Never reached
+}
+</code></pre>
+<p>These branches:</p>
+<ul>
+<li>Never execute (conditions are always false)</li>
+<li>Confuse decompiler control-flow analysis</li>
+<li>Make automated pattern matching unreliable</li>
+<li>Force manual analysis of each method</li>
+</ul>
+<h2>Technique 4: Reflection Wrapping</h2>
+<p>Standard Java method calls are replaced with reflection:</p>
+<pre><code class="language-java">// Original:
+String result = obj.toString();
+
+// Obfuscated:
+Object result = Class.forName(&quot;java.lang.Object&quot;)
+    .getMethod(&quot;toString&quot;)
+    .invoke(obj);
+</code></pre>
+<p>This affects:</p>
+<ul>
+<li>All standard library calls</li>
+<li>Internal method calls between classes</li>
+<li>Constructor invocations</li>
+<li>Field access</li>
+</ul>
+<h2>Technique 5: Native Code Protection</h2>
+<p>The native security library <code>libe61d.so</code> (see <a href="06-closed-loop-algorithm.html">06-closed-loop-algorithm.md</a>) adds:</p>
+<ul>
+<li>Root detection</li>
+<li>Anti-debug (ptrace, process monitoring)</li>
+<li>Anti-Frida / anti-hook (dladdr, mprotect monitoring)</li>
+<li>Anti-tamper (fork/execv self-monitoring)</li>
+<li>APK integrity verification</li>
+</ul>
+<h2>Technique 6: PairIP License Check</h2>
+<p>Package <code>com/pairip/licensecheck/</code> implements Google Play license verification, adding another layer of app authenticity checks.</p>
+<h2>Impact on Reverse Engineering</h2>
+<h3>What Makes Analysis Hard</h3>
+<ol>
+<li>Class names give no hints about functionality</li>
+<li>String constants are not visible in static analysis</li>
+<li>Control flow is polluted with dead branches</li>
+<li>Method calls are hidden behind reflection</li>
+<li>Native code is encrypted and anti-debug protected</li>
+</ol>
+<h3>What Makes Analysis Possible</h3>
+<ol>
+<li><strong>BLE UUIDs are not encrypted</strong> — they exist as byte arrays that DexGuard doesn&#39;t recognise as strings</li>
+<li><strong>libsodium function signatures</strong> are identifiable by parameter patterns (key sizes, nonce sizes)</li>
+<li><strong>gRPC endpoint</strong> <code>connect.cam.pr.sec01.proregia.io</code> is in cleartext in <code>MediaDescriptionCompat.java</code></li>
+<li><strong>Protobuf message classes</strong> retain their field structure even when renamed</li>
+<li><strong>JNI method signatures</strong> in <code>GlobalFunctions.java</code> are readable</li>
+<li><strong>Firebase/strings.xml</strong> values are in cleartext</li>
+<li><strong>Dexcom OAuth credentials</strong> are in cleartext</li>
+</ol>
+<h3>Key Source Files (Decompiled Paths)</h3>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>defpackage/KmsAeadKeyOrBuilder.java</code></td>
+<td>PumpBleHandler</td>
+</tr>
+<tr>
+<td><code>defpackage/MediaDescriptionCompat.java</code></td>
+<td>BackendService</td>
+</tr>
+<tr>
+<td><code>defpackage/write.java</code></td>
+<td>CryptoWrapper</td>
+</tr>
+<tr>
+<td><code>defpackage/ensureEntryIsMutable.java</code></td>
+<td>EncryptedAppKeyStore</td>
+</tr>
+<tr>
+<td><code>defpackage/S3ExecutionContext.java</code></td>
+<td>StringDecryptor</td>
+</tr>
+<tr>
+<td><code>defpackage/getMaximumBolusSuggestion.java</code></td>
+<td>CryptoHelper</td>
+</tr>
+<tr>
+<td><code>com/proregia/probluetooth/enums/ProStatusCodeEnum.java</code></td>
+<td>Error codes</td>
+</tr>
+<tr>
+<td><code>uk/ac/cam/ap/ypsomed_15x/ypsomed/YpsoCommandChars.java</code></td>
+<td>BLE commands</td>
+</tr>
+<tr>
+<td><code>uk/ac/cam/ap/ypsomed_15x/data/DataRepositoryImp.java</code></td>
+<td>Pump data</td>
+</tr>
+</tbody></table>
+<h2>Deobfuscation Methodology</h2>
+<p>The approach used for this analysis:</p>
+<ol>
+<li><strong>Identify entry points</strong>: AndroidManifest.xml activity/service declarations</li>
+<li><strong>Follow BLE callbacks</strong>: <code>onCharacteristicChanged</code> leads to crypto code</li>
+<li><strong>Pattern match libsodium</strong>: 32-byte keys + 24-byte nonces = XChaCha20</li>
+<li><strong>Trace gRPC calls</strong>: Protobuf serialization patterns are distinctive</li>
+<li><strong>Hook with Frida</strong>: Runtime string decryption reveals actual values</li>
+<li><strong>Cross-reference error codes</strong>: <code>ProStatusCodeEnum</code> provides semantic context</li>
+</ol>
+</article>
+      <footer class="site-footer">
+        <p><strong>Research only.</strong> Not a medical device. Insulin dosing errors can cause severe harm or death.</p>
+        <p>Based on <a href="https://github.com/SandraK82/ypsopump-research">SandraK82/ypsopump-research</a> (MIT). Enhanced fork by <a href="https://github.com/master3395/ypsopump-research">master3395</a>.</p>
+      </footer>
+    </div>
+  </div>
+</body>
+</html>

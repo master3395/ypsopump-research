@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>08 — Security Findings | YpsoPump Research</title>
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <a href="../index.html">YpsoPump Research</a>
+    <span class="tagline">#WeAreNotWaiting</span>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="Documentation"><h2>Pump and BLE</h2><ul><li><a href="01-hardware.html">01 — hardware</a></li><li><a href="02-ble-protocol.html">02 — ble protocol</a></li><li><a href="03-encryption.html">03 — encryption</a></li><li><a href="04-key-exchange.html">04 — key exchange</a></li></ul><h2>Backend and security</h2><ul><li><a href="05-backend-communication.html">05 — backend communication</a></li><li><a href="06-closed-loop-algorithm.html">06 — closed loop algorithm</a></li><li><a href="07-obfuscation.html">07 — obfuscation</a></li><li><a href="08-security-findings.html" class="active">08 — security findings</a></li><li><a href="09-bypass-options.html">09 — bypass options</a></li><li><a href="10-legal-analysis.html">10 — legal analysis</a></li></ul><h2>CamAPS FX</h2><ul><li><a href="11-camaps-algorithm-analysis.html">11 — camaps algorithm analysis</a></li><li><a href="12-camaps-sideload-bypass.html">12 — camaps sideload bypass</a></li><li><a href="13-play-integrity-bypass-success.html">13 — play integrity bypass success</a></li><li><a href="20-camaps-apk-189-vs-192.html">20 — camaps apk 189 vs 192</a></li><li><a href="21-camaps-liberty-availability.html">21 — camaps liberty availability</a></li><li><a href="22-cgm-error-codes-reference.html">22 — cgm error codes reference</a></li></ul><h2>mylife app</h2><ul><li><a href="14-mylife-app-overview.html">14 — mylife app overview</a></li><li><a href="15-mylife-app-security.html">15 — mylife app security</a></li><li><a href="16-mylife-app-proregia-protocol.html">16 — mylife app proregia protocol</a></li><li><a href="17-mylife-app-components.html">17 — mylife app components</a></li><li><a href="18-mylife-app-bypass-plan.html">18 — mylife app bypass plan</a></li><li><a href="19-key-lifecycle-pump-rotation.html">19 — key lifecycle pump rotation</a></li></ul><h2>Guides</h2><ul><li><a href="../guides/building-a-driver-app.html">building a driver app</a></li><li><a href="../guides/frida-key-extraction.html">frida key extraction</a></li><li><a href="../guides/ble-sniffing-setup.html">ble sniffing setup</a></li></ul><h2>More</h2><ul><li><a href="../index.html">Home</a></li><li><a href="../data/index.html">Data / CSV</a></li><li><a href="https://github.com/master3395/ypsopump-research">GitHub</a></li></ul></nav>
+    <div class="main">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / 08 — Security Findings</div>
+      
+      <article class="content"><h1>08 — Security Findings</h1>
+<h2>Overview</h2>
+<p>This document summarises all security vulnerabilities and noteworthy findings discovered during the reverse engineering of CamAPS FX v1.4(190).111. Findings are categorised by severity and include both weaknesses and strong security practices.</p>
+<h2>Critical Findings</h2>
+<h3>1. No Certificate Pinning (gRPC + REST)</h3>
+<p><strong>Severity</strong>: High
+<strong>Impact</strong>: Full MITM of all backend communication on rooted devices</p>
+<p>The gRPC channel to <code>connect.cam.pr.sec01.proregia.io:443</code> uses standard TLS without certificate pinning:</p>
+<pre><code class="language-java">// Decompiled (MediaDescriptionCompat.java)
+ManagedChannelBuilder.forAddress(&quot;connect.cam.pr.sec01.proregia.io&quot;, 443)
+    .build();
+// No CertificatePinner, no custom TrustManager
+</code></pre>
+<p>Similarly, OkHttp REST clients use standard <code>OkHttpClient.Builder()</code> without <code>CertificatePinner</code>.</p>
+<p><strong>Exploitation</strong>: Install a custom root CA on a rooted Android device, then intercept all traffic including the 116-byte key exchange response.</p>
+<h3>2. Hardcoded Dexcom OAuth Client Secret</h3>
+<p><strong>Severity</strong>: High
+<strong>Impact</strong>: Unauthorised access to Dexcom APIs</p>
+<p>Both the Client ID (a UUID) and Client Secret are hardcoded in cleartext in <code>UAMTokenActivity.java</code> (DexGuard-obfuscated class name varies by version). The client secret is a trivially guessable string — literally the word &quot;secret&quot;.</p>
+<h3>3. Dexcom Development Server URLs in Production</h3>
+<p><strong>Severity</strong>: Medium
+<strong>Impact</strong>: Potential data leakage to non-production environment</p>
+<p>The Authorization and Token endpoints (found in cleartext in <code>UAMTokenActivity.java</code>) point to a <code>.dexcomdev.com</code> domain — a development/staging environment, not production. Production CamAPS FX is configured to authenticate against Dexcom&#39;s dev servers.</p>
+<h3>4. AES-128-CBC Without Authentication</h3>
+<p><strong>Severity</strong>: Medium
+<strong>Impact</strong>: Potential padding oracle attacks on account data</p>
+<pre><code class="language-java">// Account encryption in AccountsEntity.java
+byte[] key = Arrays.copyOf(
+    MessageDigest.getInstance(&quot;SHA-256&quot;).digest(passwordBytes),
+    16  // SHA-256 truncated to 16 bytes = AES-128!
+);
+// AES/CBC/PKCS5Padding — no HMAC, no AEAD
+</code></pre>
+<p>The <code>emailAddressEncrypted</code> and <code>passwordEncrypted</code> fields use AES-128-CBC with a key derived from a truncated SHA-256 hash. No authentication (HMAC/AEAD) is applied.</p>
+<h3>5. App-Side-Only Key Expiration</h3>
+<p><strong>Severity</strong>: Medium
+<strong>Impact</strong>: Indefinite shared key validity</p>
+<p>The 28-day key expiration is enforced only in the app:</p>
+<pre><code class="language-java">// Decompiled key expiry check
+calendar.add(Calendar.DAY_OF_YEAR, 28);
+if (now.after(calendar)) {
+    // Force new key exchange
+}
+</code></pre>
+<p>The <strong>pump does not check key age</strong>. Manipulating <code>sharedKeyDate</code> in EncryptedSharedPreferences (via Frida or Keystore hook) extends validity indefinitely.</p>
+<h3>6. Firebase API Keys in Cleartext</h3>
+<p><strong>Severity</strong>: Low (standard for Firebase, but noteworthy)</p>
+<p>All Firebase configuration values (API Key, Database URL, GCM Sender ID, App ID, Storage Bucket) are stored in cleartext in <code>res/values/strings.xml</code> within the APK. They can be extracted by any standard APK decompilation tool (e.g., <code>apktool d</code>, <code>jadx</code>).</p>
+<h3>7. IV Position Inconsistency</h3>
+<p><strong>Severity</strong>: Low
+<strong>Impact</strong>: Implementation fragility</p>
+<p>AES-CBC IV is prepended in <code>AppSettings</code> but appended in Follow Alerts. This inconsistency suggests different developers or iterations.</p>
+<h3>8. Step 2 Skipped in Key Exchange</h3>
+<p><strong>Severity</strong>: Informational
+<strong>Impact</strong>: Reduced security posture</p>
+<p>Step 2 of the 9-step key exchange protocol is marked as &quot;obsolete&quot; on Android and skipped entirely. This may have been a key attestation step.</p>
+<h2>Known CVEs (Pre-v1.7.5, 2021)</h2>
+<p>Discovered by ManiMed/ERNW security researchers:</p>
+<table>
+<thead>
+<tr>
+<th>CVE</th>
+<th>Description</th>
+<th>CVSS</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>CVE-2021-27491</td>
+<td>Password hashes exposed during registration</td>
+<td>5.8</td>
+</tr>
+<tr>
+<td>CVE-2021-27495</td>
+<td>Password visible on HTTPS → HTTP redirect</td>
+<td>6.3</td>
+</tr>
+<tr>
+<td>CVE-2021-27499</td>
+<td>Non-random IVs in CBC encryption</td>
+<td>5.4</td>
+</tr>
+<tr>
+<td>CVE-2021-27503</td>
+<td>Hardcoded secrets for app-layer encryption</td>
+<td>5.4</td>
+</tr>
+</tbody></table>
+<p>The current version (v1.4(190).111) uses ProBluetooth SDK 2.0.13 with the 9-step key exchange — this is the response to these CVEs.</p>
+<h2>Strong Security Practices</h2>
+<p>Credit where due — CamAPS FX implements several strong security measures:</p>
+<table>
+<thead>
+<tr>
+<th>Practice</th>
+<th>Details</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>XChaCha20-Poly1305 AEAD</strong></td>
+<td>Modern, secure authenticated encryption for BLE</td>
+</tr>
+<tr>
+<td><strong>Curve25519 ECDH</strong></td>
+<td>Strong key agreement with forward secrecy per key exchange</td>
+</tr>
+<tr>
+<td><strong>HChaCha20 KDF</strong></td>
+<td>Proper key derivation from raw ECDH output</td>
+</tr>
+<tr>
+<td><strong>9-step key exchange</strong></td>
+<td>Multi-party trust model (app, backend, pump)</td>
+</tr>
+<tr>
+<td><strong>Google Play Integrity</strong></td>
+<td>Attests app and device integrity</td>
+</tr>
+<tr>
+<td><strong>Utimaco Cloud HSM</strong></td>
+<td>Hardware security module for backend key material</td>
+</tr>
+<tr>
+<td><strong>Counter-based replay protection</strong></td>
+<td>Triple counter system (write, read, reboot)</td>
+</tr>
+<tr>
+<td><strong>EncryptedSharedPreferences</strong></td>
+<td>AES256-SIV + AES256-GCM for local key storage</td>
+</tr>
+<tr>
+<td><strong>SQLCipher 4.9.0 Commercial</strong></td>
+<td>AES-256 per-page database encryption</td>
+</tr>
+<tr>
+<td><strong>DexGuard obfuscation</strong></td>
+<td>Aggressive code protection</td>
+</tr>
+<tr>
+<td><strong>Native anti-tamper</strong></td>
+<td>Root detection, anti-debug, anti-Frida in <code>libe61d.so</code></td>
+</tr>
+<tr>
+<td><strong>Encrypted algorithm</strong></td>
+<td>Closed-loop algorithm encrypted at rest in <code>liba532a9.so</code></td>
+</tr>
+<tr>
+<td><strong>24-byte random nonces</strong></td>
+<td>Safe for random generation (192-bit birthday bound)</td>
+</tr>
+<tr>
+<td><strong>No cleartext traffic</strong></td>
+<td><code>usesCleartextTraffic=&quot;false&quot;</code> in manifest</td>
+</tr>
+</tbody></table>
+<h2>Update (2026-02-27): Play Integrity Bypass erfolgreich</h2>
+<p><strong>Die Play Integrity-Prüfung kann vollständig umgangen werden.</strong> Mit zwei Magisk-Modulen (TrickyStore v1.4.1 + Integrity Box V31) wird MEETS_STRONG_INTEGRITY erreicht — das höchste Integritätslevel. Der ProRegia Key Exchange und die Pumpenverbindung funktionieren auf einem gerooteten Gerät.</p>
+<p>Dieses Ergebnis hat Auswirkungen auf die Sicherheitsbewertung:</p>
+<table>
+<thead>
+<tr>
+<th>Schutzmaßnahme</th>
+<th>Bewertung (aktualisiert)</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Google Play Integrity</strong></td>
+<td>UMGANGEN — OEM-Keybox-Leak ermöglicht STRONG_INTEGRITY auf gerooteten Geräten</td>
+</tr>
+<tr>
+<td><strong>Native anti-tamper</strong></td>
+<td>IRRELEVANT — Kein Frida nötig, App läuft unmodifiziert</td>
+</tr>
+<tr>
+<td><strong>DexGuard obfuscation</strong></td>
+<td>IRRELEVANT — App wird nicht gepatcht oder gehookt</td>
+</tr>
+</tbody></table>
+<p>Die Schwäche liegt nicht bei CamAPS/Ypsomed, sondern im <strong>Play Integrity Ökosystem selbst</strong>: Geleakte OEM-Keyboxes ermöglichen es gerooteten Geräten, als nicht-gerootet zu erscheinen. Google revoked diese Keyboxes regelmäßig, aber neue tauchen zeitnah auf.</p>
+<p>Siehe <a href="13-play-integrity-bypass-success.html">13-play-integrity-bypass-success.md</a> für die vollständige Dokumentation.</p>
+<h2>Attack Surface Summary</h2>
+<pre><code>┌──────────────────────────────────────────────────────────┐
+│  ATTACK SURFACE                                          │
+├──────────────────────────────────────────────────────────┤
+│                                                          │
+│  BLE Layer (strong)                                      │
+│  ├── XChaCha20-Poly1305 AEAD ......... SECURE           │
+│  ├── Curve25519 key exchange .......... SECURE           │
+│  ├── Counter replay protection ........ SECURE           │
+│  └── 28-day key expiry ............... APP-SIDE ONLY ⚠️  │
+│                                                          │
+│  Backend Layer (mixed)                                   │
+│  ├── gRPC TLS ........................ NO PINNING ❌     │
+│  ├── Utimaco HSM ..................... SECURE            │
+│  ├── Google Play Integrity ........... SECURE            │
+│  └── Key attestation Step 2 ......... SKIPPED ⚠️        │
+│                                                          │
+│  Cloud Layer (weak)                                      │
+│  ├── Dexcom OAuth ................... HARDCODED SECRET ❌│
+│  ├── Account encryption ............. AES-128-CBC ❌     │
+│  ├── Firebase keys .................. CLEARTEXT ⚠️       │
+│  └── MyLife Cloud ................... AZURE APIM ✓       │
+│                                                          │
+│  App Layer (strong)                                      │
+│  ├── DexGuard obfuscation ........... STRONG            │
+│  ├── Native anti-tamper .............. STRONG            │
+│  ├── SQLCipher database .............. SECURE            │
+│  └── EncryptedSharedPreferences ...... SECURE            │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
+</code></pre>
+<h2>Responsible Disclosure</h2>
+<p>These findings were obtained through static analysis of a publicly available APK from APKPure. No active exploitation of production systems was performed. The research is conducted under the #WeAreNotWaiting movement for diabetes device interoperability and the EHDS (European Health Data Space) right to data portability.</p>
+<p>We recommend CamDiab/Ypsomed:</p>
+<ol>
+<li>Implement certificate pinning on gRPC and REST channels</li>
+<li>Rotate the Dexcom OAuth client secret and use dynamic configuration</li>
+<li>Switch to AEAD encryption (e.g. AES-GCM) for account data</li>
+<li>Re-enable Step 2 key attestation</li>
+<li>Enforce key expiration server-side or on-pump</li>
+</ol>
+</article>
+      <footer class="site-footer">
+        <p><strong>Research only.</strong> Not a medical device. Insulin dosing errors can cause severe harm or death.</p>
+        <p>Based on <a href="https://github.com/SandraK82/ypsopump-research">SandraK82/ypsopump-research</a> (MIT). Enhanced fork by <a href="https://github.com/master3395/ypsopump-research">master3395</a>.</p>
+      </footer>
+    </div>
+  </div>
+</body>
+</html>

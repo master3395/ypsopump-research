@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>18 — mylife App: Bypass-Plan für gerootetes Gerät | YpsoPump Research</title>
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <a href="../index.html">YpsoPump Research</a>
+    <span class="tagline">#WeAreNotWaiting</span>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="Documentation"><h2>Pump and BLE</h2><ul><li><a href="01-hardware.html">01 — hardware</a></li><li><a href="02-ble-protocol.html">02 — ble protocol</a></li><li><a href="03-encryption.html">03 — encryption</a></li><li><a href="04-key-exchange.html">04 — key exchange</a></li></ul><h2>Backend and security</h2><ul><li><a href="05-backend-communication.html">05 — backend communication</a></li><li><a href="06-closed-loop-algorithm.html">06 — closed loop algorithm</a></li><li><a href="07-obfuscation.html">07 — obfuscation</a></li><li><a href="08-security-findings.html">08 — security findings</a></li><li><a href="09-bypass-options.html">09 — bypass options</a></li><li><a href="10-legal-analysis.html">10 — legal analysis</a></li></ul><h2>CamAPS FX</h2><ul><li><a href="11-camaps-algorithm-analysis.html">11 — camaps algorithm analysis</a></li><li><a href="12-camaps-sideload-bypass.html">12 — camaps sideload bypass</a></li><li><a href="13-play-integrity-bypass-success.html">13 — play integrity bypass success</a></li><li><a href="20-camaps-apk-189-vs-192.html">20 — camaps apk 189 vs 192</a></li><li><a href="21-camaps-liberty-availability.html">21 — camaps liberty availability</a></li><li><a href="22-cgm-error-codes-reference.html">22 — cgm error codes reference</a></li></ul><h2>mylife app</h2><ul><li><a href="14-mylife-app-overview.html">14 — mylife app overview</a></li><li><a href="15-mylife-app-security.html">15 — mylife app security</a></li><li><a href="16-mylife-app-proregia-protocol.html">16 — mylife app proregia protocol</a></li><li><a href="17-mylife-app-components.html">17 — mylife app components</a></li><li><a href="18-mylife-app-bypass-plan.html" class="active">18 — mylife app bypass plan</a></li><li><a href="19-key-lifecycle-pump-rotation.html">19 — key lifecycle pump rotation</a></li></ul><h2>Guides</h2><ul><li><a href="../guides/building-a-driver-app.html">building a driver app</a></li><li><a href="../guides/frida-key-extraction.html">frida key extraction</a></li><li><a href="../guides/ble-sniffing-setup.html">ble sniffing setup</a></li></ul><h2>More</h2><ul><li><a href="../index.html">Home</a></li><li><a href="../data/index.html">Data / CSV</a></li><li><a href="https://github.com/master3395/ypsopump-research">GitHub</a></li></ul></nav>
+    <div class="main">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / 18 — mylife App: Bypass-Plan für gerootetes Gerät</div>
+      
+      <article class="content"><h1>18 — mylife App: Bypass-Plan für gerootetes Gerät</h1>
+<h2>Ausgangslage</h2>
+<ul>
+<li><strong>Gerootetes Gerät</strong>: Samsung Galaxy A22 5G (SM-A226B), Android 13, Magisk 30.7</li>
+<li><strong>STRONG_INTEGRITY</strong>: Bereits erreicht über TrickyStore v1.4.1 + Integrity Box V31 + OEM Keybox (key.sh)</li>
+<li><strong>CamAPS FX</strong>: Hat sich nach initialem Erfolg selbst zerstört (DexGuard Anti-Tamper)</li>
+<li><strong>mylife App</strong>: Keine Root-Detection, kein Anti-Tamper → deutlich bessere Aussichten</li>
+</ul>
+<h2>Warum mylife App statt CamAPS FX?</h2>
+<table>
+<thead>
+<tr>
+<th>Eigenschaft</th>
+<th>CamAPS FX</th>
+<th>mylife App</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Root Detection</td>
+<td>DexGuard → App löscht sich</td>
+<td><strong>KEINE</strong></td>
+</tr>
+<tr>
+<td>Anti-Tamper</td>
+<td>PairIP → Delayed Kill</td>
+<td><strong>KEINE</strong></td>
+</tr>
+<tr>
+<td>Code Obfuscation</td>
+<td>DexGuard (undurchsichtig)</td>
+<td><strong>KEINE</strong> (Klartext)</td>
+</tr>
+<tr>
+<td>Bolus-Steuerung</td>
+<td>Ja (Closed Loop Micro-Bolus + manuelle Bolus-Berechnung)</td>
+<td>Ja (mylife Dose UI)</td>
+</tr>
+<tr>
+<td>Closed Loop</td>
+<td>Ja (Cambridge Algorithm)</td>
+<td>Nein</td>
+</tr>
+</tbody></table>
+<h2>Bypass-Strategie</h2>
+<h3>Phase 1: Einfacher Test (kein Bypass nötig)</h3>
+<p>Da die mylife App <strong>keine Root-Detection</strong> hat, sollte sie einfach starten:</p>
+<ol>
+<li>App vom Play Store installieren (bereits geschehen, v2.4.3_001)</li>
+<li>App normal starten</li>
+<li>Einrichtung durchführen (Login, Pump-Pairing)</li>
+<li>Bei Pump-Verbindung → Key Exchange wird ausgelöst</li>
+</ol>
+<h3>Phase 2: Key Exchange (Play Integrity + Key Attestation)</h3>
+<p>Der Key Exchange ist die einzige Hürde. Er benötigt:</p>
+<ol>
+<li><strong>Play Integrity Token</strong> → STRONG_INTEGRITY bereits erreicht</li>
+<li><strong>Key Attestation</strong> → TrickyStore fälscht TEE-Attestation</li>
+<li><strong>gRPC zu <code>connect.ml.pr.sec01.proregia.io:8090</code></strong></li>
+</ol>
+<p><strong>Potentielle Probleme</strong>:</p>
+<ul>
+<li>Key Attestation ist strenger als Play Integrity allein</li>
+<li>ProRegia könnte die Attestation Chain gegen eine CRL (Certificate Revocation List) prüfen</li>
+<li>Wenn der OEM-Keybox in Googles Revocation-Liste steht, schlägt Key Attestation fehl</li>
+</ul>
+<h3>Phase 3: Falls Key Attestation fehlschlägt</h3>
+<p><strong>Option A</strong>: Neuen Keybox generieren</p>
+<ul>
+<li><code>key.sh</code> aktualisieren oder anderen OEM-Key verwenden</li>
+<li>Google revoziert bekannte Keyboxes periodisch</li>
+</ul>
+<p><strong>Option B</strong>: Key Attestation per Frida bypassen</p>
+<ul>
+<li>Da die App <strong>kein Anti-Tamper</strong> hat, kann Frida sicher verwendet werden</li>
+<li>Hook: <code>IDeviceAttestation.AttestKey()</code> → gefälschtes Attestation Result</li>
+<li>Hook: <code>ValidateKeyAttestationAsync()</code> → Success Response simulieren</li>
+</ul>
+<p><strong>Option C</strong>: Traffic-Interception</p>
+<ul>
+<li>Kein Certificate Pinning → MITM über Root-CA</li>
+<li>gRPC Responses manipulieren (Key Attestation Response fälschen)</li>
+<li>Tool: mitmproxy mit gRPC-Support</li>
+</ul>
+<p><strong>Option D</strong>: vicktor/ypsomed-pump Relay</p>
+<ul>
+<li>Proxy-Approach des GitHub-Repos als Fallback</li>
+<li>Erfordert separaten Server, der den Key Exchange durchführt</li>
+<li>Komplexer aber bewährt</li>
+</ul>
+<h2>Schritt-für-Schritt Testplan</h2>
+<h3>Vorbereitung</h3>
+<pre><code class="language-bash"># 1. Sicherstellen dass STRONG_INTEGRITY noch besteht
+# Play Integrity Checker App testen
+
+# 2. Logcat vorbereiten (auf PC)
+adb logcat -c &amp;&amp; adb logcat | tee /tmp/mylife-test.log
+
+# 3. Anderes Telefon ausschalten (BLE-Konflikt vermeiden)
+</code></pre>
+<h3>Test</h3>
+<pre><code class="language-bash"># 4. mylife App starten
+adb shell am start -n net.sinovo.mylife.app/.SplashScreen
+
+# 5. Einrichtung durchführen
+# → Login mit Ypsomed-Konto
+# → Pump-Pairing starten
+# → YpsoPump in Pairing-Modus versetzen
+
+# 6. Key Exchange beobachten
+adb logcat | grep -iE &quot;proregia|integrity|attest|key.exchange|grpc|8090&quot;
+</code></pre>
+<h3>Diagnose bei Fehler</h3>
+<pre><code class="language-bash"># Key Exchange Fehler analysieren
+adb logcat | grep -iE &quot;error|exception|fail|denied|reject&quot;
+
+# gRPC Traffic prüfen (wenn Pinning nicht aktiv)
+# → mitmproxy oder Frida-basierter Interceptor
+
+# Key Attestation separat testen
+# → Android Key Attestation Test App
+</code></pre>
+<h2>Erwartete Ergebnisse</h2>
+<table>
+<thead>
+<tr>
+<th>Szenario</th>
+<th>Wahrscheinlichkeit</th>
+<th>Aufwand</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>App startet und Pump verbindet direkt</td>
+<td>60%</td>
+<td>Minimal</td>
+</tr>
+<tr>
+<td>App startet, Key Exchange schlägt fehl (Attestation)</td>
+<td>25%</td>
+<td>Frida Hook</td>
+</tr>
+<tr>
+<td>App startet, Key Exchange schlägt fehl (Integrity)</td>
+<td>10%</td>
+<td>Keybox erneuern</td>
+</tr>
+<tr>
+<td>App startet nicht (unbekannter Check)</td>
+<td>5%</td>
+<td>Analyse nötig</td>
+</tr>
+</tbody></table>
+<h2>Key Lifecycle nach erfolgreichem Key Exchange</h2>
+<p>Siehe ausführliche Analyse in <a href="19-key-lifecycle-pump-rotation.html">19-key-lifecycle-pump-rotation.md</a>.</p>
+<p><strong>Kernaussagen</strong>:</p>
+<ol>
+<li><strong>Einmaliger Key Exchange reicht</strong>: Der Shared Key funktioniert unbegrenzt, solange die App ihn nicht verwirft</li>
+<li><strong>Pumpe rotiert NICHTS</strong>: Der Pump Public Key ist factory-burned und ändert sich nie</li>
+<li><strong>28-Tage-Expiry nur app-seitig</strong>: Kann durch Manipulation von <code>sharedKeyDate</code> oder Frida-Hook umgangen werden</li>
+<li><strong>Nach Pumpen-Neustart</strong>: Shared Key bleibt gültig, nur Counter müssen neu synchronisiert werden (erst lesen, dann schreiben)</li>
+<li><strong>Commander Key = gleicher Lifecycle</strong>: Kein separater Schlüssel mit eigener Laufzeit</li>
+</ol>
+<p><strong>Praktisch</strong>: Wenn der Key Exchange einmal klappt, haben wir einen stabilen verschlüsselten Kanal, ohne dass die Pumpe uns je rauswerfen kann.</p>
+<h2>Risiken</h2>
+<ol>
+<li><strong>Pump-Insulin-Sicherheit</strong>: mylife Dose ermöglicht Bolus-Abgabe. Ein Fehler im Bypass könnte theoretisch zu falscher Insulinabgabe führen. → <strong>Immer manuell an der Pumpe verifizieren</strong></li>
+<li><strong>BLE-Timing</strong>: Nur ein Gerät kann gleichzeitig mit der Pumpe verbunden sein. → Zweites Telefon ausschalten</li>
+<li><strong>Keybox-Revocation</strong>: Google kann den verwendeten OEM-Keybox jederzeit revozieren. → key.sh regelmäßig aktualisieren</li>
+<li><strong>Counter-Sync nach Reboot</strong>: Nach Pumpen-Neustart MUSS erst eine Pump-Nachricht gelesen werden, bevor Befehle gesendet werden können — sonst Fehler 138/139</li>
+</ol>
+</article>
+      <footer class="site-footer">
+        <p><strong>Research only.</strong> Not a medical device. Insulin dosing errors can cause severe harm or death.</p>
+        <p>Based on <a href="https://github.com/SandraK82/ypsopump-research">SandraK82/ypsopump-research</a> (MIT). Enhanced fork by <a href="https://github.com/master3395/ypsopump-research">master3395</a>.</p>
+      </footer>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,2155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>11 — The Cambridge Adaptive MPC Algorithm in CamAPS FX: A Comprehensive Technical Analysis | YpsoPump Research</title>
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <a href="../index.html">YpsoPump Research</a>
+    <span class="tagline">#WeAreNotWaiting</span>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="Documentation"><h2>Pump and BLE</h2><ul><li><a href="01-hardware.html">01 — hardware</a></li><li><a href="02-ble-protocol.html">02 — ble protocol</a></li><li><a href="03-encryption.html">03 — encryption</a></li><li><a href="04-key-exchange.html">04 — key exchange</a></li></ul><h2>Backend and security</h2><ul><li><a href="05-backend-communication.html">05 — backend communication</a></li><li><a href="06-closed-loop-algorithm.html">06 — closed loop algorithm</a></li><li><a href="07-obfuscation.html">07 — obfuscation</a></li><li><a href="08-security-findings.html">08 — security findings</a></li><li><a href="09-bypass-options.html">09 — bypass options</a></li><li><a href="10-legal-analysis.html">10 — legal analysis</a></li></ul><h2>CamAPS FX</h2><ul><li><a href="11-camaps-algorithm-analysis.html" class="active">11 — camaps algorithm analysis</a></li><li><a href="12-camaps-sideload-bypass.html">12 — camaps sideload bypass</a></li><li><a href="13-play-integrity-bypass-success.html">13 — play integrity bypass success</a></li><li><a href="20-camaps-apk-189-vs-192.html">20 — camaps apk 189 vs 192</a></li><li><a href="21-camaps-liberty-availability.html">21 — camaps liberty availability</a></li><li><a href="22-cgm-error-codes-reference.html">22 — cgm error codes reference</a></li></ul><h2>mylife app</h2><ul><li><a href="14-mylife-app-overview.html">14 — mylife app overview</a></li><li><a href="15-mylife-app-security.html">15 — mylife app security</a></li><li><a href="16-mylife-app-proregia-protocol.html">16 — mylife app proregia protocol</a></li><li><a href="17-mylife-app-components.html">17 — mylife app components</a></li><li><a href="18-mylife-app-bypass-plan.html">18 — mylife app bypass plan</a></li><li><a href="19-key-lifecycle-pump-rotation.html">19 — key lifecycle pump rotation</a></li></ul><h2>Guides</h2><ul><li><a href="../guides/building-a-driver-app.html">building a driver app</a></li><li><a href="../guides/frida-key-extraction.html">frida key extraction</a></li><li><a href="../guides/ble-sniffing-setup.html">ble sniffing setup</a></li></ul><h2>More</h2><ul><li><a href="../index.html">Home</a></li><li><a href="../data/index.html">Data / CSV</a></li><li><a href="https://github.com/master3395/ypsopump-research">GitHub</a></li></ul></nav>
+    <div class="main">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / 11 — The Cambridge Adaptive MPC Algorithm in CamAPS FX: A Comprehensive Technical Analysis</div>
+      
+      <article class="content"><h1>11 — The Cambridge Adaptive MPC Algorithm in CamAPS FX: A Comprehensive Technical Analysis</h1>
+<blockquote>
+<p><strong>Note (master3395 fork):</strong> This analysis targets CamAPS FX <strong>v1.4(190).111</strong>. APK-level changes in <strong>189 vs 192</strong> (Dexcom G7, Liberty FCL, minSdk 33) are documented in <a href="20-camaps-apk-189-vs-192.html">20 — CamAPS APK comparison</a>.</p>
+</blockquote>
+<h2>Abstract</h2>
+<p>CamAPS FX implements an adaptive Model Predictive Control (MPC) algorithm developed at the University of Cambridge by Prof. Roman Hovorka and colleagues. The algorithm uses a physiological compartment model of glucose-insulin dynamics (the Hovorka model), an Interacting Multiple Model (IMM) state estimator with <strong>8 parallel sub-models</strong>, and a receding-horizon optimization framework to compute insulin micro-boluses every 8--12 minutes. This document provides a detailed mathematical and clinical analysis of the algorithm&#39;s architecture, decision logic, adaptation mechanisms, and safety systems, synthesized from published research, regulatory submissions, and reverse engineering of the CamAPS FX native library (<code>libd91238_dumped.so</code>, ARM64 ELF). Concrete parameter values were extracted directly from the binary&#39;s data section and decompiled code using Ghidra 12.0.3.</p>
+<hr>
+<h2>1. Physiological Foundation: The Hovorka Compartment Model</h2>
+<p>The algorithm&#39;s core is a nonlinear compartment model of the human glucoregulatory system, first published by Hovorka et al. (2004). The core model consists of <strong>8 ordinary differential equations (ODEs)</strong> for the glucose-insulin system, organized into four subsystems. The full implementation adds gut absorption states (D_1, D_2) and an interstitial glucose state (G_sub) for CGM modeling, bringing the total tracked state vector to 11 variables. All quantities are normalized to body weight unless otherwise noted.</p>
+<h3>1.1 Glucose Kinetics Subsystem</h3>
+<p>Two compartments represent glucose distribution between plasma and peripheral tissues.</p>
+<p><strong>Accessible (plasma) glucose compartment Q_1:</strong></p>
+<p>$$\frac{dQ_1}{dt} = -x_1(t) \cdot Q_1(t) + k_{12} \cdot Q_2(t) - F_{01}^c(t) - F_R(t) + U_G(t) + EGP_0 \cdot [1 - x_3(t)]$$</p>
+<p><strong>Non-accessible (tissue) glucose compartment Q_2:</strong></p>
+<p>$$\frac{dQ_2}{dt} = x_1(t) \cdot Q_1(t) - [k_{12} + x_2(t)] \cdot Q_2(t)$$</p>
+<p><strong>Measurable plasma glucose concentration:</strong></p>
+<p>$$G(t) = \frac{Q_1(t)}{V_G}$$</p>
+<p>The auxiliary fluxes are defined as:</p>
+<p><strong>CNS glucose consumption</strong> (non-insulin-dependent, corrected for hypoglycemia):</p>
+<p>$$F_{01}^c(t) = \begin{cases} F_{01} &amp; \text{if } G(t) \geq 4.5 \text{ mmol/L} \ F_{01} \cdot \frac{G(t)}{4.5} &amp; \text{otherwise} \end{cases}$$</p>
+<p><strong>Renal glucose excretion</strong> (above the renal threshold of 9 mmol/L):</p>
+<p>$$F_R(t) = \begin{cases} 0.003 \cdot (G(t) - 9) \cdot V_G &amp; \text{if } G(t) \geq 9 \text{ mmol/L} \ 0 &amp; \text{otherwise} \end{cases}$$</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Value (from binary)</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>V_G</td>
+<td><strong>0.14 L/kg</strong></td>
+<td>Glucose distribution volume (SubModel1::Vg)</td>
+</tr>
+<tr>
+<td>k_12</td>
+<td><strong>0.07 min^-1</strong></td>
+<td>Transfer rate, non-accessible to accessible (SubModel1::k12)</td>
+</tr>
+<tr>
+<td>k_21</td>
+<td><strong>0.05 min^-1</strong></td>
+<td>Transfer rate, accessible to non-accessible (SubModel1::k21)</td>
+</tr>
+<tr>
+<td>mcr_I</td>
+<td><strong>0.02709 min^-1</strong></td>
+<td>Metabolic clearance rate of insulin (SubModel1::mcrI)</td>
+</tr>
+<tr>
+<td>EGP_0</td>
+<td><strong>0.0111 mmol/kg/min</strong></td>
+<td>Basal endogenous glucose production (SubModel1::egpBbasal)</td>
+</tr>
+<tr>
+<td>F_01</td>
+<td>0.0097 mmol/kg/min</td>
+<td>Non-insulin-dependent glucose flux (CNS consumption)</td>
+</tr>
+</tbody></table>
+<p>The glucose unit conversion constant used internally is <strong>5.551 mmol/L per 100 mg/dL</strong> (glucose molecular weight 180.16 g/mol), confirmed in the decompiled <code>InteractStep1</code> function. A secondary composite conversion constant <strong>0.08127</strong> (= 1000 / (18.016 * 60 * 0.1146)) relates insulin sensitivity units, with <strong>0.02709 = 0.08127 / 3</strong> used for metabolic clearance normalization.</p>
+<h3>1.2 Subcutaneous Insulin Absorption Subsystem</h3>
+<p>A two-compartment chain models the pharmacokinetics of subcutaneously infused insulin.</p>
+<p><strong>Subcutaneous depot 1:</strong></p>
+<p>$$\frac{dS_1}{dt} = u(t) - \frac{S_1(t)}{\tau_{max,I}}$$</p>
+<p><strong>Subcutaneous depot 2:</strong></p>
+<p>$$\frac{dS_2}{dt} = \frac{S_1(t)}{\tau_{max,I}} - \frac{S_2(t)}{\tau_{max,I}}$$</p>
+<p><strong>Plasma insulin concentration:</strong></p>
+<p>$$\frac{dI}{dt} = \frac{S_2(t)}{V_I \cdot \tau_{max,I}} - k_e \cdot I(t)$$</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Value (from binary)</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>u(t)</td>
+<td>Control variable [mU/min]</td>
+<td>Insulin infusion rate (MPC output)</td>
+</tr>
+<tr>
+<td>tau_max,I</td>
+<td>55--75 min (adaptive)</td>
+<td>Time-to-maximum insulin absorption</td>
+</tr>
+<tr>
+<td>k_e</td>
+<td>0.138 min^-1</td>
+<td>Fractional insulin elimination rate</td>
+</tr>
+<tr>
+<td>V_I</td>
+<td>0.12 L/kg</td>
+<td>Insulin distribution volume</td>
+</tr>
+</tbody></table>
+<p>The parameter tau_max,I is <strong>not fixed</strong> but is one of the key adaptive parameters estimated by the IMM filter (Section 3). Its value captures inter- and intra-individual variability in insulin absorption speed.</p>
+<p>The insulin absorption rate constants are computed from insulin sensitivity (IS) via <strong>power-law relationships</strong> discovered in the decompiled <code>InteractStep1</code> code. These equations replace simple table lookups with a continuous, physiologically motivated mapping:</p>
+<p>$$k_{a1} = \exp(1.582 \cdot \ln(IS/1.38) - 6.081) \quad \text{bounded } [0.02, 0.15] \text{ min}^{-1}$$
+$$k_{a2} = \exp(\ln(IS/1.38) + 0.201)$$
+$$k_{a3} = \exp(-1.683 \cdot \ln(IS/1.38) - 4.489)$$</p>
+<p>The sensitivity scaling factor follows a piecewise linear model: 1.4 if IS &lt; 0.3, linearly ramping to 1.0 for 0.3 &lt; IS &lt; 1.0, and 1.0 for IS &gt; 1.0. The nominal rate constant is <strong>0.0191 min^-1</strong> (IEEE 754: 0x3c9c779a).</p>
+<h3>1.3 Insulin Action Subsystem</h3>
+<p>Three parallel first-order processes model the delayed effect of plasma insulin on glucose metabolism. Each targets a distinct physiological pathway:</p>
+<p><strong>Transport effect</strong> (glucose distribution between compartments):</p>
+<p>$$\frac{dx_1}{dt} = -k_{a1} \cdot x_1(t) + k_{b1} \cdot I(t)$$</p>
+<p><strong>Disposal effect</strong> (peripheral glucose uptake):</p>
+<p>$$\frac{dx_2}{dt} = -k_{a2} \cdot x_2(t) + k_{b2} \cdot I(t)$$</p>
+<p><strong>Endogenous production effect</strong> (hepatic glucose output suppression):</p>
+<p>$$\frac{dx_3}{dt} = -k_{a3} \cdot x_3(t) + k_{b3} \cdot I(t)$$</p>
+<p>The insulin sensitivity for each pathway is defined as the ratio S_I = k_b / k_a:</p>
+<table>
+<thead>
+<tr>
+<th>Pathway</th>
+<th>k_a [min^-1]</th>
+<th>S_I</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Transport</td>
+<td>0.006</td>
+<td>S_IT = 21--29 x 10^-4 min^-1 per mU/L</td>
+<td>Glucose redistribution</td>
+</tr>
+<tr>
+<td>Disposal</td>
+<td>0.06</td>
+<td>S_ID = 4--7 x 10^-4 min^-1 per mU/L</td>
+<td>Peripheral glucose uptake</td>
+</tr>
+<tr>
+<td>EGP suppression</td>
+<td>0.03</td>
+<td>S_IE = 178--254 x 10^-4 per mU/L</td>
+<td>Hepatic output suppression</td>
+</tr>
+</tbody></table>
+<p>The three distinct deactivation rate constants k_a1, k_a2, k_a3 produce different time constants for each insulin effect, with deactivation half-lives of t_1/2 = ln(2)/k_a. This separation is physiologically meaningful: the insulin effect on peripheral glucose disposal deactivates fastest (<del>12 min half-life via k_a2), hepatic glucose production suppression deactivates at intermediate speed (</del>23 min via k_a3), and the glucose redistribution effect persists longest (~115 min via k_a1). These differing dynamics are essential for accurate prediction of the glucose trajectory shape -- they explain why insulin has both a rapid onset effect and a prolonged &quot;tail&quot;.</p>
+<p>The decompiled code reveals that the insulin action subsystem is solved using <strong>analytical (exponential) solutions</strong> rather than numerical integration. For each step, the code computes:</p>
+<p>$$x_i(t+\Delta t) = x_i(t) \cdot e^{-k_{ai} \cdot \Delta t} + \frac{k_{ai}}{60} \cdot (1 - e^{-k_{ai} \cdot \Delta t}) \cdot I(t)$$</p>
+<p>The factor 1/60 converts from per-minute rates to per-hour insulin units. A special case handler detects when two rate constants are nearly equal (|1/k_a1 - k_a2| &lt;= epsilon) and uses the appropriate degenerate analytical solution.</p>
+<h3>1.4 Gut Glucose Absorption Model</h3>
+<p>A two-compartment chain with first-order kinetics models carbohydrate digestion and glucose absorption:</p>
+<p>$$\frac{dD_1}{dt} = A_G \cdot D(t) - \frac{D_1(t)}{\tau_{max,G}}$$</p>
+<p>$$\frac{dD_2}{dt} = \frac{D_1(t)}{\tau_{max,G}} - \frac{D_2(t)}{\tau_{max,G}}$$</p>
+<p>$$U_G(t) = \frac{D_2(t)}{\tau_{max,G}}$$</p>
+<p>This produces a characteristic absorption profile:</p>
+<p>$$U_G(t) = \frac{D_G \cdot A_G \cdot t \cdot e^{-t/\tau_{max,G}}}{\tau_{max,G}^2}$$</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Value (from binary)</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>A_G</td>
+<td>0.67--0.76 (adaptive)</td>
+<td>Carbohydrate bioavailability fraction</td>
+</tr>
+<tr>
+<td>tau_max,G1</td>
+<td>Variable per weight/meal category</td>
+<td>Fast gut absorption time constant</td>
+</tr>
+<tr>
+<td>tau_max,G2</td>
+<td>Variable per weight/meal category</td>
+<td>Slow gut absorption time constant</td>
+</tr>
+<tr>
+<td>D_G</td>
+<td>Calculated from CHO input</td>
+<td>Total glucose content of meal [mmol]</td>
+</tr>
+<tr>
+<td>min meal size</td>
+<td><strong>0.1 g CHO</strong></td>
+<td>Minimum recognized meal (from decompiled code)</td>
+</tr>
+</tbody></table>
+<p>The implementation in the native library uses <strong>two parallel gut absorption time constants</strong> (tau_max,G1 and tau_max,G2), representing fast and slow components of carbohydrate absorption. This dual-pathway model better captures the biphasic absorption pattern observed with mixed meals containing both simple and complex carbohydrates.</p>
+<p>The decompiled <code>Model1::UpdateRunningMealProbAndBio</code> function reveals the following <strong>absorption time constant arrays</strong> indexed by weight and meal size category:</p>
+<p><strong>tMaxG1s</strong> (fast absorption, in minutes):</p>
+<table>
+<thead>
+<tr>
+<th>Index</th>
+<th>0</th>
+<th>1</th>
+<th>2</th>
+<th>3</th>
+<th>4</th>
+<th>5</th>
+<th>6</th>
+<th>7</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Value</td>
+<td>21.88</td>
+<td>21.88</td>
+<td>81.88</td>
+<td>51.88</td>
+<td>16.63</td>
+<td>16.63</td>
+<td>36.63</td>
+<td>16.63</td>
+</tr>
+</tbody></table>
+<p><strong>tMaxG2s</strong> (slow absorption, in minutes):</p>
+<table>
+<thead>
+<tr>
+<th>Index</th>
+<th>0</th>
+<th>1</th>
+<th>2</th>
+<th>3</th>
+<th>4</th>
+<th>5</th>
+<th>6</th>
+<th>7</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Value</td>
+<td>21.88</td>
+<td>21.88</td>
+<td>81.88</td>
+<td>51.88</td>
+<td>16.63</td>
+<td>16.63</td>
+<td>36.63</td>
+<td>16.63</td>
+</tr>
+</tbody></table>
+<p>These arrays are indexed by a combination of weight category and meal size, providing 8 distinct absorption profiles. The algorithm supports up to <strong>5 concurrent active meals</strong> simultaneously (discovered from the 5-entry meal compartment iteration in <code>IncludeNewMeal</code>).</p>
+<p><strong>Weight categories</strong> (body weight thresholds in kg):</p>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>0</th>
+<th>1</th>
+<th>2</th>
+<th>3</th>
+<th>4</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Threshold</td>
+<td>13</td>
+<td>25</td>
+<td>50</td>
+<td>85</td>
+<td>10000</td>
+</tr>
+</tbody></table>
+<p><strong>Meal sizes by weight category</strong> (expected CHO in grams):</p>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>0</th>
+<th>1</th>
+<th>2</th>
+<th>3</th>
+<th>4</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Size</td>
+<td>12</td>
+<td>20</td>
+<td>40</td>
+<td>60</td>
+<td>80</td>
+</tr>
+</tbody></table>
+<h3>1.5 Interstitial Glucose (CGM Measurement) Model</h3>
+<p>Since CGM sensors measure interstitial rather than plasma glucose, the model includes an additional transfer equation:</p>
+<p>$$\frac{dG_{sub}}{dt} = \frac{G(t) - G_{sub}(t)}{\tau_G}$$</p>
+<p>Where tau_G = 15 minutes represents the blood-to-interstitial glucose equilibration time constant. The CGM sensor reading SG(t) is further subject to calibration error and measurement noise:</p>
+<p>$$SG(t) = G_{sub}(t) \cdot (1 + \epsilon_{cal}) + \epsilon_{noise}(t)$$</p>
+<hr>
+<h2>2. Model Predictive Control Architecture</h2>
+<p>The MPC controller operates on a receding-horizon principle: at each control cycle, it solves an optimization problem over a finite future horizon, applies only the first control action, then re-optimizes at the next cycle with updated measurements.</p>
+<h3>2.1 Control Cycle Timing</h3>
+<p>The algorithm executes every <strong>8--12 minutes</strong>, triggered by new CGM data arrival. Each cycle consists of four sequential steps:</p>
+<ol>
+<li><strong>State estimation</strong> -- Update the model&#39;s internal state using the latest CGM reading</li>
+<li><strong>Glucose prediction</strong> -- Forecast the glucose trajectory over the prediction horizon</li>
+<li><strong>Optimization</strong> -- Find the insulin infusion sequence that minimizes the cost function</li>
+<li><strong>Constraint enforcement</strong> -- Apply safety limits and output the first control action</li>
+</ol>
+<h3>2.2 Prediction and Control Horizons</h3>
+<p>The native library implements <strong>asymmetric horizons</strong> that differ depending on the direction of glucose deviation:</p>
+<table>
+<thead>
+<tr>
+<th>Horizon</th>
+<th>Direction</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>predictionHorizonUp</td>
+<td>Hyperglycemia</td>
+<td>Predicts how high glucose will rise; enables proactive correction</td>
+</tr>
+<tr>
+<td>predictionHorizonDown</td>
+<td>Hypoglycemia</td>
+<td>Predicts how low glucose will fall; triggers protective suspension</td>
+</tr>
+<tr>
+<td>controlHorizonUp</td>
+<td>Hyperglycemia</td>
+<td>Duration over which increased insulin delivery is planned</td>
+</tr>
+<tr>
+<td>controlHorizonDown</td>
+<td>Hypoglycemia</td>
+<td>Duration over which insulin suspension/reduction is planned</td>
+</tr>
+</tbody></table>
+<p>The published prediction horizon is <strong>2.5 hours (150 minutes)</strong> for the upward direction. The decompiled MPC::Optimise function confirms the prediction vector uses <code>Vector&lt;float, 180&gt;</code> (180 steps), and the main optimization loop iterates <strong>48 times</strong> (<code>lVar3 != 0xc0</code>, where 0xc0/4 = 48), corresponding to <strong>48 half-hour intervals per day</strong> for the diurnal BIR profile. The minimum rate threshold is <strong>0.025 U/h</strong> (from the decompiled bound check: <code>if (0.025 &lt;= fVar6 / 48.0)</code>).</p>
+<p>The control step size (time between successive planned control actions within one optimization) and the integration time step for the ODE solver are separate parameters. The ODE solver uses <strong>4th-order Runge-Kutta (RK4)</strong> integration (confirmed from the 4-stage iteration pattern in <code>SubModel1::PredictStep</code>), while control actions are spaced at the MPC cycle interval.</p>
+<h3>2.3 Cost Function and Optimization</h3>
+<p>The MPC optimization minimizes a cost function that penalizes deviation from a <strong>target glucose trajectory</strong> and excessive insulin delivery:</p>
+<p>$$J = \sum_{k=1}^{N_p} w_G(k) \cdot [G_{pred}(k) - G_{target}(k)]^2 + \sum_{k=1}^{N_c} \lambda(k) \cdot [\Delta u(k)]^2$$</p>
+<p>The implementation uses multiple <strong>lambda (penalty) parameters</strong> for different contexts, with values extracted directly from the binary&#39;s static data section:</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Value (from binary)</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>lambdaBaseOrig</td>
+<td><strong>1.6</strong></td>
+<td>Baseline penalty on insulin rate changes (fasting)</td>
+</tr>
+<tr>
+<td>lambdaBaseMealOrig</td>
+<td><strong>1.2</strong></td>
+<td>Reduced penalty during post-meal period</td>
+</tr>
+<tr>
+<td>lambdaBaseBolus</td>
+<td><strong>1.0</strong></td>
+<td>Penalty adjustment after manual bolus delivery</td>
+</tr>
+<tr>
+<td>lambdaMealDuration</td>
+<td>Runtime-configured</td>
+<td>Duration for which the meal-adjusted penalty applies</td>
+</tr>
+</tbody></table>
+<p>Lower lambda values allow the optimizer to make larger insulin rate changes; higher values favor smoother, more conservative delivery. The meal-specific lambda (1.2 vs 1.6 baseline = <strong>25% reduction</strong>) permits the algorithm to deliver larger correction doses in the post-prandial period. The bolus-specific lambda (1.0 = <strong>37.5% reduction</strong> from baseline) allows even more aggressive dosing immediately after a user-initiated bolus, when the algorithm has high confidence that insulin is needed.</p>
+<h3>2.4 Asymmetric Target Trajectory</h3>
+<p>The target trajectory is <strong>not a fixed glucose value</strong> but a time-varying path designed with asymmetric dynamics:</p>
+<ul>
+<li><strong>From hyperglycemia</strong>: The target descends slowly toward the set point, preventing aggressive correction that could cause subsequent hypoglycemia (insulin stacking avoidance)</li>
+<li><strong>From hypoglycemia</strong>: The target rises quickly toward the set point, triggering rapid insulin suspension</li>
+</ul>
+<p>The target trajectory incorporates multiple offsets that adjust the effective target glucose:</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Value (from binary)</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>trueTargetGlucose</td>
+<td><strong>6.0 mmol/L</strong> (108 mg/dL)</td>
+<td>The physiological target (IEEE 754: 0x40c00000)</td>
+</tr>
+<tr>
+<td>maximumTargetGlucose</td>
+<td><strong>11.0 mmol/L</strong> (198 mg/dL)</td>
+<td>Upper bound for effective target</td>
+</tr>
+<tr>
+<td>minimumTargetGlucose</td>
+<td><strong>4.4 mmol/L</strong> (79 mg/dL)</td>
+<td>Lower bound for effective target</td>
+</tr>
+<tr>
+<td>targetGlucoseOffset</td>
+<td>Runtime-adaptive</td>
+<td>Safety margin for prediction uncertainty</td>
+</tr>
+<tr>
+<td>prandialTargetGlucoseOffset</td>
+<td>Runtime-adaptive</td>
+<td>Additional offset during post-prandial periods</td>
+</tr>
+<tr>
+<td>uncertaintyTargetGlucoseOffset</td>
+<td>Runtime-adaptive</td>
+<td>Dynamic offset based on state estimation uncertainty</td>
+</tr>
+<tr>
+<td>pregGlucoseOffset</td>
+<td>Runtime-configured</td>
+<td>Offset for pregnancy mode (tighter target range)</td>
+</tr>
+<tr>
+<td>glucoseStableOffset</td>
+<td>Runtime-adaptive</td>
+<td>Offset when glucose is stable (tighter control)</td>
+</tr>
+</tbody></table>
+<p>The effective target used by the optimizer is:</p>
+<p>$$G_{target}^{eff}(t) = trueTargetGlucose + targetGlucoseOffset + \text{context-dependent offsets}$$</p>
+<p>The default set point of <strong>6.0 mmol/L (108 mg/dL)</strong> was confirmed in the decompiled <code>MPC::DetermineSetPoint</code> function (IEEE 754 constant 0x40c00000). The effective target is bounded between <strong>4.4 mmol/L</strong> (minimumTargetGlucose) and <strong>11.0 mmol/L</strong> (maximumTargetGlucose). Under ideal stable conditions, the effective target is close to 6.0 mmol/L; under high prediction uncertainty, it rises toward approximately 7.3 mmol/L (132 mg/dL).</p>
+<h3>2.5 Output: Micro-Bolus Delivery</h3>
+<p>The optimizer outputs a continuous insulin infusion rate, which is converted to discrete <strong>micro-boluses</strong> for pump delivery. Since insulin pumps cannot deliver continuously at arbitrary rates, the algorithm calculates:</p>
+<p>$$\text{micro-bolus [U]} = \text{rate [U/h]} \times \frac{\text{cycle duration [min]}}{60}$$</p>
+<p>Typical micro-bolus sizes range from 0 to 0.5 U per cycle (though larger doses are possible during meal correction). Zero delivery (insulin suspension) is the response when predicted glucose falls below safety thresholds.</p>
+<hr>
+<h2>3. State Estimation: The Interacting Multiple Model (IMM) Filter</h2>
+<p>A critical challenge in closed-loop insulin delivery is that the model parameters -- particularly insulin absorption rate and carbohydrate bioavailability -- vary substantially within and between patients, and change over time. The Cambridge algorithm addresses this with an <strong>Interacting Multiple Model (IMM) estimator</strong> that runs multiple model instances in parallel.</p>
+<h3>3.1 Architecture</h3>
+<p>The native library implements the following class hierarchy:</p>
+<ul>
+<li><strong>ModelIMM1</strong> -- The top-level IMM estimator containing multiple sub-models</li>
+<li><strong>SubModelIMM1</strong> -- Individual model instances within the IMM bank</li>
+<li><strong>SubModel1</strong> -- The base physiological model (Hovorka equations) with Kalman filtering</li>
+<li><strong>Model1</strong> -- Extended model with meal tracking, weight categories, and prior distributions</li>
+</ul>
+<p>The decompiled <code>ModelIMM1::Interact</code> function confirms that the IMM bank contains exactly <strong>8 sub-models</strong> (loop condition <code>unaff_x22 == 8</code>). Each SubModel1 instance contains the full 8-ODE Hovorka model but with <strong>different parameter settings</strong> for:</p>
+<ul>
+<li>Subcutaneous insulin absorption rate (tau_max,I)</li>
+<li>Insulin action kinetics (ka1, ka2, ka3 via the power-law IS mapping)</li>
+<li>Carbohydrate absorption profile (tau_max,G1, tau_max,G2)</li>
+</ul>
+<p>The equilibrium mode probabilities for new transitions are:</p>
+<table>
+<thead>
+<tr>
+<th>equiProbNew</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Index 0</td>
+<td><strong>0.8</strong></td>
+</tr>
+<tr>
+<td>Index 1</td>
+<td><strong>0.6</strong></td>
+</tr>
+<tr>
+<td>Index 2</td>
+<td><strong>0.9</strong></td>
+</tr>
+</tbody></table>
+<p>The process noise multipliers for IMM initialization (<code>multWini</code>, <code>multWk31ini</code>, <code>multWktInsIni</code>) configure the initial relative uncertainty for each sub-model:</p>
+<table>
+<thead>
+<tr>
+<th>multWini</th>
+<th>1</th>
+<th>1</th>
+<th>2</th>
+<th>2</th>
+<th>1</th>
+<th>1</th>
+<th>2</th>
+<th>2</th>
+</tr>
+</thead>
+</table>
+<p>This pattern suggests the 8 sub-models are organized as <strong>4 pairs</strong>, with each pair sharing a base parameter configuration but differing in process noise (the <code>2</code> entries have double the initial process noise, representing higher parameter uncertainty).</p>
+<h3>3.2 IMM Cycle</h3>
+<p>At each control cycle, the IMM estimator executes the standard four-step procedure:</p>
+<p><strong>Step 1: Model Interaction</strong> (InteractStep1, InteractStep2)</p>
+<p>The state estimates from all sub-models are mixed according to transition probabilities:</p>
+<p>$$\hat{x}<em>{0j}(k) = \sum</em>{i=1}^{N} \mu_{i|j}(k) \cdot \hat{x}_i(k-1)$$</p>
+<p>where mu_{i|j} represents the probability of transitioning from model i to model j. These transition probabilities (initialized via <code>InitialiseTransitionProbE</code>) encode the expected persistence of each absorption mode.</p>
+<p><strong>Step 2: Model-Conditional Filtering</strong> (UpdateIMM)</p>
+<p>Each sub-model runs its own Kalman filter update using the latest CGM measurement. The innovation (difference between predicted and actual CGM reading) drives the state correction:</p>
+<p>$$\hat{x}<em>i(k) = \hat{x}</em>{0i}(k) + K_i(k) \cdot [SG(k) - \hat{SG}_i(k)]$$</p>
+<p>The <strong>weighted residual</strong> for each model measures how well it predicted the current observation.</p>
+<p><strong>Step 3: Model Probability Update</strong> (UpdateModePropability)</p>
+<p>Each model&#39;s probability weight is updated based on its prediction accuracy:</p>
+<p>$$\mu_i(k) = \frac{L_i(k) \cdot c_i(k)}{\sum_{j=1}^{N} L_j(k) \cdot c_j(k)}$$</p>
+<p>where L_i(k) is the likelihood of the current observation under model i, and c_i(k) is the prior probability (from the mixing step). The log-likelihood values are tracked in the <code>logLikeIMMS</code> and <code>logLikelihoodS</code> state variables.</p>
+<p><strong>Step 4: Output Integration</strong> (CombineVarPredGlu, CombineVarPredUs)</p>
+<p>The combined state estimate and prediction variance are computed as probability-weighted averages:</p>
+<p>$$\hat{x}(k) = \sum_{i=1}^{N} \mu_i(k) \cdot \hat{x}_i(k)$$</p>
+<p>$$P(k) = \sum_{i=1}^{N} \mu_i(k) \cdot [P_i(k) + (\hat{x}_i(k) - \hat{x}(k))(\hat{x}_i(k) - \hat{x}(k))^T]$$</p>
+<p>The combined prediction variance (second equation) includes both the individual filter uncertainties and the <strong>spread of the means</strong> across models -- a key advantage of the IMM approach.</p>
+<h3>3.3 Meal Mode Detection</h3>
+<p>The IMM framework naturally handles meal detection through the model probability mechanism. The sub-model bank includes models with different assumptions about meal presence and size:</p>
+<table>
+<thead>
+<tr>
+<th>State Variable</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>probVeryLargeS</td>
+<td>Probability that a very large meal is active</td>
+</tr>
+<tr>
+<td>probLargeS</td>
+<td>Probability of a large meal being active</td>
+</tr>
+<tr>
+<td>probMediumS</td>
+<td>Probability of a medium meal</td>
+</tr>
+<tr>
+<td>probSmallS</td>
+<td>Probability of a small meal</td>
+</tr>
+</tbody></table>
+<p>When CGM data shows a rising glucose pattern consistent with carbohydrate absorption, the probabilities shift toward meal-active models. The <code>LastMealActive()</code> method determines whether the combined probability indicates ongoing meal absorption, and <code>GetMinutesLastMeal()</code> tracks the elapsed time since the last detected meal.</p>
+<p>The meal probability estimation uses Bayesian updating based on time of day (with distinct priors for morning, afternoon, evening, and night meals), meal history, and the glucose trajectory shape. The prior meal probabilities are stored in the <code>priorMealProb</code> array:</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Value (from binary)</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>priorMealProb</td>
+<td>Array of <strong>48 values</strong></td>
+<td>Per-half-hour prior probability of meal occurrence</td>
+</tr>
+<tr>
+<td>mealMorningGlb</td>
+<td>Runtime-configured</td>
+<td>Morning meal size prior</td>
+</tr>
+<tr>
+<td>mealAfternoonGlb</td>
+<td>Runtime-configured</td>
+<td>Afternoon meal size prior</td>
+</tr>
+<tr>
+<td>mealEveningGlb</td>
+<td>Runtime-configured</td>
+<td>Evening meal size prior</td>
+</tr>
+<tr>
+<td>mealNightGlb</td>
+<td>Runtime-configured</td>
+<td>Night meal size prior (typically low)</td>
+</tr>
+</tbody></table>
+<p>The decompiled <code>UpdateRunningMealProbAndBio</code> function processes <strong>48 meal probability/bioavailability pairs</strong> (corresponding to 48 half-hour intervals per day) and includes a timezone validation check (latitude bounds -90.1 to 280.1) for time-of-day meal priors.</p>
+<h3>3.4 Adaptive Parameters</h3>
+<p>Each sub-model tracks and adapts two key parameters via its Kalman filter:</p>
+<ol>
+<li><strong>Background glucose flux</strong> (endogenous glucose production drift) -- compensates for model misspecification and circadian variation in hepatic glucose output</li>
+<li><strong>Carbohydrate bioavailability (A_G)</strong> -- adapts to individual absorption characteristics and estimation errors in carbohydrate input</li>
+</ol>
+<p>The covariance matrices for the Kalman filters are managed through the <code>InitialiseCovarianceE</code> and <code>covariancesElementsIMM1Glb</code> structures, with separate covariance tracking for the original and current estimates (<code>covariancesElementsOrigIMM1Glb</code>).</p>
+<hr>
+<h2>4. Rate Modification Logic: The Decision Cascade</h2>
+<p>After the MPC optimizer computes a raw insulin infusion rate, a series of <strong>rule-based modifications</strong> adjust the rate for safety and clinical appropriateness. This cascade operates through several methods in the MPC class:</p>
+<h3>4.1 Glucose-Level-Based Modification</h3>
+<p>The <code>ModifyRateGlucoseLevel</code> method adjusts the insulin rate based on the current absolute glucose value:</p>
+<ul>
+<li><strong>Below hypoglycemia threshold</strong>: Rate is reduced to zero (complete insulin suspension)</li>
+<li><strong>In low range</strong>: Rate is proportionally reduced</li>
+<li><strong>At target</strong>: Rate passes through unmodified</li>
+<li><strong>Above target</strong>: Rate may be proportionally increased (bounded by maximum multiplier)</li>
+</ul>
+<p>The thresholds are defined by <code>minCGMThresholdTDD</code> (glucose level below which TDD correction is applied) and <code>minCGMThresholdAdjust</code> (glucose level below which rate adjustment is applied).</p>
+<h3>4.2 Glucose-Rate-Based Modification</h3>
+<p>The <code>ModifyRateGlucoseRate</code> method considers the <strong>rate of glucose change</strong> (slope):</p>
+<ul>
+<li><strong>Rapidly falling glucose</strong>: Rate is reduced even if current level is acceptable, anticipating future hypoglycemia</li>
+<li><strong>Rapidly rising glucose</strong>: Rate may be increased to counter the trend</li>
+<li><strong>Stable glucose</strong>: No rate-of-change modification</li>
+</ul>
+<p>The slope calculation uses recent CGM history, computed in <code>GetSlope</code>, over a configurable time window.</p>
+<h3>4.3 Background Insulin Rate (BIR) Adjustment</h3>
+<p>The <code>ModifyRateDeltaBIR</code> method adjusts the rate relative to the Background Insulin Rate (BIR). The BIR represents the algorithm&#39;s estimate of the patient&#39;s baseline insulin need at the current time of day:</p>
+<p>$$BIR = \frac{TDD \cdot BIRasFractionOfTDD}{24 \text{ hours}} \cdot \text{diurnal profile factor}$$</p>
+<p>The BIR is <strong>not identical to a traditional basal rate</strong> but rather the algorithm&#39;s continuously updated estimate of baseline insulin requirements. The modification ensures that rate changes are bounded relative to this baseline:</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Value (from binary)</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>BIRasFractionOfTDD</td>
+<td><strong>0.48</strong></td>
+<td>BIR as fraction of total daily dose (48%)</td>
+</tr>
+<tr>
+<td>BIRHalf</td>
+<td>Runtime-adaptive</td>
+<td>Half-life of BIR averaging (standard)</td>
+</tr>
+<tr>
+<td>BIRHalfShort</td>
+<td>Runtime-adaptive</td>
+<td>Half-life of BIR averaging (short-term)</td>
+</tr>
+<tr>
+<td>minBasalAsFractionOfTotal</td>
+<td>Runtime-configured</td>
+<td>Minimum basal delivery as fraction of TDD</td>
+</tr>
+</tbody></table>
+<p>The <strong>48% BIR fraction</strong> means the algorithm allocates approximately half of the total daily insulin as background (basal-like) delivery, with the remaining 52% available for correction and meal boluses. The BIR is normalized across 48 half-hour intervals per day (the <code>/48.0</code> divisor appears throughout the decompiled code), and a minimum BIR change rate of <strong>0.0007 U/h</strong> serves as a safety bound.</p>
+<h3>4.4 Exercise Modification</h3>
+<p>The <code>ModifyExercise</code> method adjusts insulin delivery around physical activity:</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>exerciseBackPeriod</td>
+<td>How far back exercise history is considered</td>
+</tr>
+<tr>
+<td>exerciseForwardPeriod</td>
+<td>How far ahead exercise effects are projected</td>
+</tr>
+<tr>
+<td>exerciseRateModifyBackPeriod</td>
+<td>Period for rate modification before exercise</td>
+</tr>
+<tr>
+<td>exerciseRateModifyForwardPeriod</td>
+<td>Period for rate modification after exercise</td>
+</tr>
+<tr>
+<td>fractionTDDexercise</td>
+<td>Fraction of TDD reduction during exercise</td>
+</tr>
+<tr>
+<td>noInsulinDuringExercise</td>
+<td>Flag for complete insulin suspension during activity</td>
+</tr>
+<tr>
+<td>SetPointIncreaseExercise</td>
+<td>Target glucose elevation during exercise</td>
+</tr>
+<tr>
+<td>durationSetPointExerciseFuture</td>
+<td>Duration of elevated target after exercise announcement</td>
+</tr>
+<tr>
+<td>durationSetPointExercisePast</td>
+<td>Duration of elevated target before exercise onset</td>
+</tr>
+</tbody></table>
+<p>Exercise triggers both a <strong>target glucose increase</strong> (making the algorithm less aggressive) and a <strong>direct rate reduction</strong> (reducing insulin delivery proactively). The <code>maxBGaffectTDDExercise</code> parameter prevents exercise-related hyperglycemia from biasing the TDD adaptation.</p>
+<h3>4.5 Large Rate Change Protection</h3>
+<p>The <code>SetLargeInfusionChange</code> and <code>GetLargeInfusionChange</code> methods implement a safety mechanism that flags and limits large step changes in insulin delivery:</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>largeRateChangeThresholdUp</td>
+<td>Maximum allowed upward rate change per cycle</td>
+</tr>
+<tr>
+<td>largeRateChangeThresholdDown</td>
+<td>Maximum allowed downward rate change per cycle</td>
+</tr>
+</tbody></table>
+<p>This prevents the optimizer from making sudden, large insulin delivery changes that could result from noisy CGM data or transient model misspecification.</p>
+<h3>4.6 Occlusion Detection</h3>
+<p>The <code>LowestBGIfOcclusion</code> and <code>ProgressModelForOcclusion</code> methods simulate what would happen if the insulin infusion set were occluded (no insulin actually being delivered despite pump commands). If the predicted glucose under the occlusion scenario exceeds safety thresholds:</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>occlusionDuration</td>
+<td>Duration of simulated occlusion for safety check</td>
+</tr>
+</tbody></table>
+<p>This proactive safety check ensures the algorithm does not rely on insulin delivery that may not actually be occurring, and may trigger alerts.</p>
+<h3>4.7 Rescue Carbohydrate Recommendation</h3>
+<p>The <code>RescueCarbReduction</code> method computes a recommended carbohydrate intake when predicted glucose drops dangerously low. This produces a notification to the user to consume fast-acting carbohydrates, quantified based on the predicted glucose deficit.</p>
+<hr>
+<h2>5. TDD Adaptation: The Learning System</h2>
+<p>The algorithm continuously learns and adapts its estimate of total daily insulin requirements. This is the primary mechanism by which CamAPS FX personalizes to an individual patient over time.</p>
+<h3>5.1 Initialization</h3>
+<p>At setup, the algorithm requires only two inputs:</p>
+<ul>
+<li><strong>Body weight</strong> (kg)</li>
+<li><strong>Total Daily Dose</strong> (TDD, U/day)</li>
+</ul>
+<p>From these, the algorithm derives initial estimates for:</p>
+<ul>
+<li>Insulin sensitivity (S_IT, S_ID, S_IE)</li>
+<li>Insulin-to-carb ratio (ICR)</li>
+<li>Background insulin rate (BIR)</li>
+<li>Active insulin time</li>
+</ul>
+<p>A minimum TDD per kg body weight (<code>minimumTDDperKg</code>, <code>minTDDperKg_T1D</code>) provides a safety floor for initialization.</p>
+<h3>5.2 Continuous TDD Adaptation</h3>
+<p>The <code>UpdateTDDandPerfomance</code>, <code>CalculateTDDfromPastPerformance_T2D</code>, and related methods implement a multi-faceted TDD adaptation system:</p>
+<p><strong>Hourly TDD Tracking</strong>: The algorithm maintains an hourly record (<code>tagHourlyTDDRec</code>) of insulin delivery and glycemic outcomes. This captures diurnal patterns:</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>UpdateFractionTDD</td>
+<td>Updates the fractional TDD distribution across the day</td>
+</tr>
+<tr>
+<td>GetHourlyRecordSummary</td>
+<td>Summarizes hourly performance metrics</td>
+</tr>
+<tr>
+<td>FindMostRecentValidHourlyTDDrecordIndex</td>
+<td>Locates the most recent reliable hourly data point</td>
+</tr>
+</tbody></table>
+<p><strong>Performance-Based Adjustment</strong>: The <code>FindPastPerformance_T2D</code> method analyzes past glycemic outcomes to determine if TDD should be increased or decreased:</p>
+<p>$$TDD_{new} = TDD_{current} \cdot (1 + \delta_{performance})$$</p>
+<p>where delta_performance is bounded by:</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>maximumPercentageIncreaseInTDD_T2D</td>
+<td>Maximum % increase per adaptation cycle</td>
+</tr>
+<tr>
+<td>maximumPercentageDecreaseInTDD_T2D</td>
+<td>Maximum % decrease per adaptation cycle</td>
+</tr>
+<tr>
+<td>maximumAbsoluteIncreaseInTDD_T2D</td>
+<td>Maximum absolute increase (U/day)</td>
+</tr>
+<tr>
+<td>maximumPercentageInreaseRelativeToDeliveredInTDD_T2D</td>
+<td>Max increase relative to actually delivered insulin</td>
+</tr>
+</tbody></table>
+<p><strong>CGM-Based Adjustment</strong>: The <code>AdjustTDDbasedOnCGM</code> and <code>ModifyInternalTDDRecentGlucose_T2D</code> methods use recent glucose patterns to fine-tune TDD:</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>bCoeffRecentGlucose_T2D</td>
+<td>Regression coefficient for glucose-based TDD correction</td>
+</tr>
+<tr>
+<td>recentGlucoseAmplifier_T2D</td>
+<td>Amplification factor for recent glucose influence</td>
+</tr>
+<tr>
+<td>maxCorrectionRecentGlucose_T2D</td>
+<td>Maximum glucose-based TDD correction</td>
+</tr>
+<tr>
+<td>minCorrectionRecentGlucose_T2D</td>
+<td>Minimum glucose-based TDD correction</td>
+</tr>
+</tbody></table>
+<p><strong>Hypoglycemia-Based Reduction</strong>: The <code>ModifyInternalTDDhypoPreviousDayGlucose_T2D</code> method reduces TDD after hypoglycemic episodes:</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>percentageDecreaseTDDatHypo_T2D</td>
+<td>TDD reduction percentage after hypoglycemia</td>
+</tr>
+<tr>
+<td>hypoThresholdTDD_T2D</td>
+<td>Glucose threshold defining hypoglycemia for TDD adjustment</td>
+</tr>
+<tr>
+<td>fractionTDDhypo</td>
+<td>TDD fraction affected by hypoglycemia correction</td>
+</tr>
+</tbody></table>
+<p><strong>Evening Dinner Adjustment</strong>: Specific parameters handle the common clinical scenario where elevated glucose after dinner is a persistent problem:</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>dinnerHighGlucoseReduction_T2D</td>
+<td>TDD adjustment for persistent post-dinner highs</td>
+</tr>
+<tr>
+<td>dinnerHighGlucoseReductionXtra_T2D</td>
+<td>Additional adjustment for severe cases</td>
+</tr>
+<tr>
+<td>targetIncreaseEvening_T2D</td>
+<td>Target glucose increase for evening hours</td>
+</tr>
+<tr>
+<td>eveningStartHour_T2D</td>
+<td>Hour at which evening period begins</td>
+</tr>
+<tr>
+<td>eveningEndHour_T2D</td>
+<td>Hour at which evening period ends</td>
+</tr>
+</tbody></table>
+<h3>5.3 TDD Bounds and Safety</h3>
+<p>The adaptation system operates within strict bounds. The following concrete values were extracted from the binary&#39;s data section:</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Value (from binary)</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>maximumTDD</td>
+<td><strong>45.0 U/day</strong></td>
+<td>Absolute maximum TDD</td>
+</tr>
+<tr>
+<td>minimumTDD</td>
+<td><strong>45.0 U/day</strong></td>
+<td>Absolute minimum TDD (note: same as maximum in this build)</td>
+</tr>
+<tr>
+<td>forgettingHalfTime</td>
+<td><strong>150 min</strong></td>
+<td>Half-life of data relevance for TDD adaptation</td>
+</tr>
+<tr>
+<td>minTDDmultiplier</td>
+<td>Runtime-configured</td>
+<td>Minimum ratio of adapted TDD to initial TDD</td>
+</tr>
+<tr>
+<td>maxTDDmultiplier</td>
+<td>Runtime-configured</td>
+<td>Maximum ratio of adapted TDD to initial TDD</td>
+</tr>
+<tr>
+<td>minTDDcorrection</td>
+<td>Runtime-configured</td>
+<td>Minimum per-cycle TDD correction (U/day)</td>
+</tr>
+<tr>
+<td>maxTDDcorrection</td>
+<td>Runtime-configured</td>
+<td>Maximum per-cycle TDD correction (U/day)</td>
+</tr>
+<tr>
+<td>requiredHoursTDDcorrection</td>
+<td>Runtime-configured</td>
+<td>Minimum hours of data required before TDD correction</td>
+</tr>
+</tbody></table>
+<p>The forgetting half-time of <strong>150 minutes</strong> means that data older than ~2.5 hours contributes less than 50% weight to the TDD adaptation, giving strong emphasis to recent glycemic performance while still maintaining stability.</p>
+<h3>5.4 Look-Ahead TDD</h3>
+<p>The algorithm uses a <strong>forward-looking TDD</strong> mechanism that predicts future insulin needs based on the current glucose trajectory and recent history:</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>lookAheadFracTDDsize</td>
+<td>Window size for look-ahead TDD calculation</td>
+</tr>
+<tr>
+<td>lookAheadTDDadjustmnet</td>
+<td>Adjustment factor for look-ahead TDD</td>
+</tr>
+<tr>
+<td>lookAheadTDDcorrection</td>
+<td>Correction term for look-ahead TDD</td>
+</tr>
+<tr>
+<td>lookAheadTDDrevise_T2D</td>
+<td>Revision factor for T2D look-ahead TDD</td>
+</tr>
+<tr>
+<td>lookBackTDDrevise_T2D</td>
+<td>Revision factor using historical look-back</td>
+</tr>
+<tr>
+<td>weightsLookAheadFracTDD</td>
+<td>Weight vector for fractional TDD look-ahead</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>6. Boost and Ease-Off Modes</h2>
+<p>These user-activatable modes provide temporary adjustments for situations where normal algorithm behavior is insufficient.</p>
+<h3>6.1 Boost Mode</h3>
+<p><strong>Clinical purpose</strong>: Increased insulin delivery for illness, growth spurts, hormonal fluctuations, or persistent hyperglycemia.</p>
+<p><strong>Mechanism</strong>: Boost increases the algorithm&#39;s internal TDD estimate by approximately <strong>35%</strong> in a <strong>glucose-responsive</strong> manner. Critically:</p>
+<ul>
+<li>The glucose <strong>target is NOT changed</strong></li>
+<li>The algorithm assumes the patient currently needs ~35% more insulin than its adapted TDD estimate</li>
+<li>This causes more aggressive insulin delivery at any given glucose level</li>
+<li>The delivery remains proportional to glucose elevation -- insulin is not blindly increased</li>
+</ul>
+<p><strong>Parameters involved</strong>: <code>amplifierTDD</code> and <code>amplifierAdjust</code> control the magnitude and responsiveness of the Boost effect.</p>
+<p><strong>Clinical data</strong> (7,464 users):</p>
+<ul>
+<li>Mean starting glucose at Boost activation: 229 +/- 51 mg/dL (12.7 +/- 2.8 mmol/L)</li>
+<li>Time in range during Boost: 28%</li>
+<li>Time above 180 mg/dL during Boost: 72%</li>
+<li>Time below 70 mg/dL during Boost: 0.0% (IQR 0.0--0.5%)</li>
+<li>Average usage: 4.3 times/week, 65 minutes per activation</li>
+</ul>
+<h3>6.2 Ease-Off Mode</h3>
+<p><strong>Clinical purpose</strong>: Reduced insulin delivery for exercise, increased hypoglycemia risk, or periods of heightened insulin sensitivity.</p>
+<p><strong>Mechanism</strong>: Ease-Off applies <strong>two simultaneous modifications</strong>:</p>
+<ol>
+<li>The glucose <strong>target is increased</strong> (less aggressive correction of hyperglycemia)</li>
+<li>The assumed <strong>insulin sensitivity is increased</strong> (the algorithm believes the patient needs less insulin)</li>
+</ol>
+<p>Both changes act in the same direction: less insulin delivery.</p>
+<p><strong>Clinical data</strong> (7,464 users):</p>
+<ul>
+<li>Mean starting glucose at Ease-Off activation: 114 +/- 29 mg/dL (6.3 +/- 1.6 mmol/L)</li>
+<li>Time in range during Ease-Off: 75%</li>
+<li>Time below 70 mg/dL during Ease-Off: 7.0% (IQR 2.9--14.4%)</li>
+<li>Average usage: 2.4 times/week, 82 minutes per activation</li>
+</ul>
+<h3>6.3 Scheduling</h3>
+<p>Both modes can be scheduled in <strong>30-minute segments</strong>, allowing users to pre-program Boost or Ease-Off for predictable events (e.g., regular exercise times, anticipated illness patterns).</p>
+<hr>
+<h2>7. Meal Handling</h2>
+<p>CamAPS FX operates as a <strong>hybrid</strong> closed-loop system: meals require user announcement with carbohydrate estimation. The algorithm then computes the meal bolus and manages post-prandial glycemia.</p>
+<h3>7.1 Bolus Calculation</h3>
+<p>The meal bolus is calculated using the standard formula:</p>
+<p>$$\text{SuggestedMealBolus} = \frac{\text{CalcCarbs}}{\text{CalcICRatio}}$$</p>
+<p>where CalcICRatio (insulin-to-carbohydrate ratio, g/U) is automatically derived from the adapted TDD. The correction bolus for elevated glucose is:</p>
+<p>$$\text{SuggestedCorrectionBolus} = \frac{\text{CalcBG} - \text{CalcTargetBG}}{\text{CalcCorrectionFactor}}$$</p>
+<p>Insulin on Board (IOB) is subtracted according to the configured handling mode:</p>
+<ul>
+<li><strong>SubtractIobFromMealAndCorrection</strong>: IOB reduces the total recommended bolus</li>
+<li><strong>SubtractIobFromCorrectionOnly</strong>: IOB reduces only the correction component (preserving full meal coverage)</li>
+</ul>
+<p>$$\text{FinalBolus} = \max(0, \text{MealBolus} + \text{CorrectionBolus} - \text{IOBAdjustment})$$</p>
+<h3>7.2 Post-Meal Algorithm Behavior</h3>
+<p>After a meal bolus is delivered, the MPC algorithm continues to manage post-prandial glucose through micro-boluses. The meal event triggers several parameter adjustments:</p>
+<ol>
+<li><strong>Cost function relaxation</strong>: <code>lambdaBaseMeal</code> reduces the insulin rate change penalty for the duration specified by <code>lambdaMealDuration</code>, allowing more aggressive dosing</li>
+<li><strong>Target trajectory adjustment</strong>: <code>prandialTargetGlucoseOffset</code> modifies the effective target during the post-prandial period</li>
+<li><strong>Meal tracking in IMM</strong>: The meal probability states (<code>probLargeS</code>, etc.) and meal absorption model are updated</li>
+<li><strong>Insulin bolus reset</strong>: <code>AfterInsulinBolusIMM1</code> adjusts the IMM state estimates to account for the known bolus delivery, and <code>fracInsulinBolusToResetE</code> determines how much of the bolus information resets the filter states</li>
+</ol>
+<h3>7.3 Meal Size Categories and Prior Probabilities</h3>
+<p>The algorithm classifies meals into discrete size categories with associated prior probabilities:</p>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>Probability tracking</th>
+<th>Size estimate tracking</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Very Large</td>
+<td>probVeryLargeS</td>
+<td>squareVeryLargeS, sumVeryLargeS</td>
+</tr>
+<tr>
+<td>Large</td>
+<td>probLargeS</td>
+<td>squareLargeS, sumLargeS</td>
+</tr>
+<tr>
+<td>Medium</td>
+<td>probMediumS</td>
+<td>squareMediumS, sumMediumS</td>
+</tr>
+<tr>
+<td>Small</td>
+<td>probSmallS</td>
+<td>squareSmallS, sumSmallS</td>
+</tr>
+</tbody></table>
+<p>The categorization is time-of-day dependent (<code>mealMorningGlb</code>, <code>mealAfternoonGlb</code>, <code>mealEveningGlb</code>, <code>mealNightGlb</code>) and adapts based on the patient&#39;s eating patterns. The <code>UpdateRunningMealProbAndBio</code> function (10,368 bytes -- one of the largest in the binary) updates running statistics for meal probability and bioavailability across 48 half-hour intervals, maintaining a <strong>48-element parameter/covariance vector</strong> (or 6x8 matrix diagonal). It reads 12-field records per update cycle for comprehensive meal tracking.</p>
+<h3>7.4 Weight-Based Meal Adjustment</h3>
+<p>The algorithm adjusts meal insulin delivery based on patient weight categories:</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>nominalWeight</td>
+<td>Reference weight for standard dosing</td>
+</tr>
+<tr>
+<td>lowWeight</td>
+<td>Threshold for low-weight adjustment</td>
+</tr>
+<tr>
+<td>weightCategory</td>
+<td>Current weight classification</td>
+</tr>
+<tr>
+<td>rateModifierLowWeight</td>
+<td>Rate reduction factor for low weight</td>
+</tr>
+<tr>
+<td>rateModifierNominalWeight</td>
+<td>Rate modifier at nominal weight</td>
+</tr>
+<tr>
+<td>mealSizeForWeightCategory</td>
+<td>Expected meal sizes by weight category</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>8. Safety Systems</h2>
+<h3>8.1 Hypoglycemia Prevention</h3>
+<p>The algorithm implements a multi-layered approach to hypoglycemia prevention:</p>
+<p><strong>Layer 1 -- Predictive suspension</strong>: When the predicted glucose trajectory crosses below the safety threshold within the prediction horizon, insulin delivery is suspended before hypoglycemia occurs.</p>
+<p><strong>Layer 2 -- Rate-based reduction</strong>: Rapidly falling glucose triggers proportional insulin reduction even if the absolute level is still acceptable.</p>
+<p><strong>Layer 3 -- Absolute threshold</strong>: Below a configurable glucose threshold, insulin delivery is set to zero regardless of model predictions.</p>
+<p><strong>Layer 4 -- TDD reduction</strong>: Hypoglycemic episodes trigger <code>percentageDecreaseTDDatHypo_T2D</code>, reducing future baseline insulin delivery.</p>
+<p><strong>Layer 5 -- Rescue carbohydrate recommendation</strong>: If predicted glucose drops dangerously low, the <code>RescueCarbReduction</code> method computes a carbohydrate recommendation displayed to the user.</p>
+<h3>8.2 Maximum Insulin Constraints</h3>
+<table>
+<thead>
+<tr>
+<th>Constraint</th>
+<th>Value (from binary)</th>
+<th>Mechanism</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Maximum TDD</td>
+<td><strong>45.0 U/day</strong> (this build)</td>
+<td>Absolute daily insulin limit</td>
+</tr>
+<tr>
+<td>TDD per kg limit</td>
+<td>Body-weight-normalized</td>
+<td>Maximum daily dose per kg</td>
+</tr>
+<tr>
+<td>Maximum infusion rate</td>
+<td>2--5x BIR</td>
+<td>Depending on context</td>
+</tr>
+<tr>
+<td>Large rate change limit</td>
+<td>Runtime-configured</td>
+<td>Maximum single-cycle rate change</td>
+</tr>
+<tr>
+<td>Maximum TDD multiplier</td>
+<td>Runtime-configured</td>
+<td>Cap on adapted TDD deviation from initial</td>
+</tr>
+<tr>
+<td>Minimum rate output</td>
+<td><strong>0.025 U/h</strong></td>
+<td>Hard floor from MPC::Optimise</td>
+</tr>
+</tbody></table>
+<h3>8.3 CGM Data Quality</h3>
+<p>The algorithm monitors CGM data quality and availability:</p>
+<ul>
+<li><strong>CGMMeasurementExist</strong> checks whether valid CGM data is available within the expected time window</li>
+<li><strong>ModifyEnoughGlucoseMeasurements</strong> adjusts algorithm behavior when CGM data is sparse</li>
+<li><strong>Sensor gap handling</strong>: When CGM data becomes unavailable, the system falls back to the pre-programmed basal rate profile (no longer running the MPC algorithm)</li>
+<li><strong>Variance tracking</strong>: <code>pgVarS</code> (predicted glucose variance) and <code>predGluIGS</code> (predicted interstitial glucose) are used to quantify prediction uncertainty</li>
+</ul>
+<h3>8.4 Sanity Checks and Error Handling</h3>
+<p>The native library includes comprehensive sanity checking:</p>
+<table>
+<thead>
+<tr>
+<th>Error System</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>errorArray</td>
+<td>Global error state tracking</td>
+</tr>
+<tr>
+<td>CheckErrorCodeArray</td>
+<td>Validates internal consistency</td>
+</tr>
+<tr>
+<td>CriticalErrorMPC</td>
+<td>Fatal algorithm errors requiring safe shutdown</td>
+</tr>
+<tr>
+<td>smallValSanityCheck</td>
+<td>Prevents numerical underflow in critical calculations</td>
+</tr>
+<tr>
+<td>SetSanityRunValues</td>
+<td>Configures bounds for sanity validation</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>9. Type 2 Diabetes Support</h2>
+<p>The algorithm includes a distinct operational mode for Type 2 Diabetes, evidenced by the numerous <code>_T2D</code>-suffixed parameters. Key differences from the Type 1 mode include:</p>
+<ul>
+<li><strong>Different TDD adaptation bounds</strong>: Wider range for maximumPercentageIncreaseInTDD_T2D, reflecting the larger insulin doses and greater dose variability in T2D</li>
+<li><strong>Residual endogenous insulin</strong>: The model accounts for preserved beta-cell function by adjusting the EGP suppression parameters</li>
+<li><strong>Different hypoglycemia thresholds</strong>: T2D patients may have different hypoglycemia awareness and risk profiles</li>
+<li><strong>Evening-specific adjustments</strong>: Enhanced post-dinner glucose management (<code>dinnerHighGlucoseReduction_T2D</code>) addressing a common T2D challenge</li>
+<li><strong>Treatment approach</strong>: The <code>treatmentApproach</code> parameter (passed to the MPC constructor) configures the algorithm for T1D vs. T2D operation</li>
+</ul>
+<hr>
+<h2>10. Pregnancy Mode</h2>
+<p>CamAPS FX supports use during pregnancy (validated in the AiDAPT trial), with specific adaptations:</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>pregGlucoseOffset</td>
+<td>Tighter glucose target offset for pregnancy</td>
+</tr>
+<tr>
+<td>pregGlucoseStableOffset</td>
+<td>Stability criterion adjustment for pregnancy</td>
+</tr>
+</tbody></table>
+<p>Pregnancy mode uses <strong>tighter glycemic targets</strong> consistent with clinical guidelines for gestational diabetes management (target range 3.5--7.8 mmol/L = 63--140 mg/dL). The AiDAPT trial demonstrated a +10.5 percentage point improvement in time in this tighter range compared to standard care.</p>
+<hr>
+<h2>11. Model State Architecture</h2>
+<p>The complete state vector maintained by the algorithm includes:</p>
+<h3>11.1 Per-SubModel State (SubModel1)</h3>
+<p>The decompiled <code>InteractStep1</code> function reveals the full internal state layout via struct offsets. The intermediate state vector uses an <strong>81-float buffer</strong> (local_1f4[81]):</p>
+<table>
+<thead>
+<tr>
+<th>State Variable</th>
+<th>Offset</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Q_1</td>
+<td>[0]</td>
+<td>Glucose mass compartment 1 (plasma)</td>
+</tr>
+<tr>
+<td>Q_2</td>
+<td>[1]</td>
+<td>Glucose mass compartment 2 (peripheral)</td>
+</tr>
+<tr>
+<td>x_1</td>
+<td>[2]</td>
+<td>Insulin action on glucose distribution</td>
+</tr>
+<tr>
+<td>x_3</td>
+<td>[3]</td>
+<td>Insulin action on EGP suppression</td>
+</tr>
+<tr>
+<td>variance/glucose</td>
+<td>[4]</td>
+<td>Predicted variance or glucose estimate</td>
+</tr>
+<tr>
+<td>S_1, S_2</td>
+<td>[5-6]</td>
+<td>Insulin subsystem states</td>
+</tr>
+<tr>
+<td>D_1_slow, D_2_slow</td>
+<td>[7-8]</td>
+<td>Slow gut absorption compartment</td>
+</tr>
+<tr>
+<td>D_1_fast, D_2_fast</td>
+<td>[9-10]</td>
+<td>Fast gut absorption compartment</td>
+</tr>
+<tr>
+<td>ka rates</td>
+<td>[11-14]</td>
+<td>Absorption rates for glucose compartments</td>
+</tr>
+<tr>
+<td>Integrated insulin action</td>
+<td>[0x15-0x17]</td>
+<td>Accumulated insulin effect states</td>
+</tr>
+<tr>
+<td>Glucose prediction + var</td>
+<td>[0x18-0x1a]</td>
+<td>Glucose prediction with variance</td>
+</tr>
+<tr>
+<td>Meal parameters</td>
+<td>[0x2f-0x31]</td>
+<td>Meal-related parameters</td>
+</tr>
+<tr>
+<td>Accumulated EGP time</td>
+<td>[0x3e]</td>
+<td>Time accumulator for EGP</td>
+</tr>
+<tr>
+<td>Combined insulin effect</td>
+<td>[0x3f]</td>
+<td>Net insulin action</td>
+</tr>
+<tr>
+<td>Background insulin</td>
+<td>[0x42]</td>
+<td>Current BIR estimate</td>
+</tr>
+<tr>
+<td>Current CGM reading</td>
+<td>[0x44]</td>
+<td>Latest sensor glucose</td>
+</tr>
+<tr>
+<td>State covariance P</td>
+<td>8x8 matrix</td>
+<td>Kalman filter uncertainty (separate allocation)</td>
+</tr>
+</tbody></table>
+<h3>11.2 Per-ModelIMM1 State</h3>
+<p>The decompiled <code>ModelIMM1::Predict</code> reveals the multi-model state allocation. The model maintains 8 sets of state vectors with a total state block of <strong>672 bytes</strong> (0x2a0) per prediction step:</p>
+<table>
+<thead>
+<tr>
+<th>State Variable</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Model probabilities (8 floats)</td>
+<td>Probability weight for each of the 8 sub-models</td>
+</tr>
+<tr>
+<td>Combined state estimate</td>
+<td>Probability-weighted state average</td>
+</tr>
+<tr>
+<td>Combined prediction variance</td>
+<td>Including inter-model spread</td>
+</tr>
+<tr>
+<td>BIR (multiple timescales)</td>
+<td>Background insulin rate estimates</td>
+</tr>
+<tr>
+<td>Meal absorption state</td>
+<td>Up to 5 active meals tracked simultaneously</td>
+</tr>
+<tr>
+<td>Model selection index</td>
+<td>Current best-fitting model (via <code>GetBestModel</code>)</td>
+</tr>
+<tr>
+<td>Transition probability matrix</td>
+<td>Stored at offsets 0x2040, 0x216c, 0x2298, 0x23c4 (300 bytes each)</td>
+</tr>
+<tr>
+<td>Log-likelihood arrays</td>
+<td>For model probability updating</td>
+</tr>
+</tbody></table>
+<h3>11.3 MPC-Level State</h3>
+<table>
+<thead>
+<tr>
+<th>State Variable</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>tagHourlyTDDRec</td>
+<td>24-hour record of hourly TDD, insulin delivery, and glucose</td>
+</tr>
+<tr>
+<td>tagCalculatedTDDRec</td>
+<td>Calculated TDD with adaptation history</td>
+</tr>
+<tr>
+<td>Prediction buffers</td>
+<td>Predicted glucose and insulin trajectories (Vector&lt;float, 180&gt;)</td>
+</tr>
+<tr>
+<td>Rate history</td>
+<td>Recent insulin delivery rates</td>
+</tr>
+<tr>
+<td>Rule activation log</td>
+<td>Which safety rules were triggered (reportRules)</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>12. Numerical Methods</h2>
+<h3>12.1 ODE Integration</h3>
+<p>The model equations are solved using a <strong>4th-order Runge-Kutta (RK4)</strong> integrator, confirmed by the decompiled <code>SubModel1::PredictStep</code> function (7,660 bytes), which shows a 4-stage outer loop (<code>unaff_x26 == 4</code> break condition) with each stage processing 24 floats (0x60 bytes = 24 x 4-byte floats).</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Value (from binary/decompilation)</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Integration method</td>
+<td><strong>RK4 (4 stages)</strong></td>
+<td>4th-order Runge-Kutta</td>
+</tr>
+<tr>
+<td>State vector size</td>
+<td><strong>8 elements</strong></td>
+<td>Vector&lt;float, 8&gt; for core Hovorka model</td>
+</tr>
+<tr>
+<td>Insulin action</td>
+<td><strong>Analytical (exponential)</strong></td>
+<td>Pre-computed analytical solutions for x1, x2, x3</td>
+</tr>
+<tr>
+<td>dtInt</td>
+<td>~1 minute</td>
+<td>Integration time step</td>
+</tr>
+<tr>
+<td>smalldtInt</td>
+<td>Finer for critical sections</td>
+<td>Sub-step for stability</td>
+</tr>
+<tr>
+<td>controlStepInt</td>
+<td>Integer multiple of dtInt</td>
+<td>Control step as number of integration steps</td>
+</tr>
+</tbody></table>
+<p>The <code>CalculateDerivative</code> method in the Model class computes the system Jacobian (8x8 matrix) for the linearized model update, used by both the Kalman filter prediction step and the optimizer.</p>
+<p>The <strong>hybrid integration approach</strong> -- RK4 for the full glucose dynamics but analytical solutions for the insulin action subsystem (x1, x2, x3) -- is a computationally efficient design that exploits the linear structure of the insulin action ODEs while using a general-purpose integrator for the nonlinear glucose dynamics.</p>
+<h3>12.2 Matrix Operations</h3>
+<p>The native library includes custom matrix and vector classes with fixed maximum dimensions:</p>
+<ul>
+<li><strong>Matrix&lt;float, 8, 8&gt;</strong> -- System matrices (state transition, covariance)</li>
+<li><strong>Matrix&lt;float, 9, 80&gt;</strong> -- Extended state matrices for the multi-model bank</li>
+<li><strong>Matrix&lt;float, 8, 24&gt;</strong> -- Used for 24-hour diurnal pattern storage</li>
+<li><strong>Vector&lt;float, 8&gt;</strong> -- State vectors</li>
+<li><strong>Vector&lt;float, 180&gt;</strong> -- Prediction horizon vectors (180 steps = ~3 hours at 1-min steps)</li>
+<li><strong>Vector&lt;float, 390&gt;</strong> -- Extended data storage vectors</li>
+</ul>
+<p>Matrix inversion uses LU decomposition (<code>ludcmp</code>), and the implementation includes checks for singular matrices. The <code>Model::findLowestLagrandian</code> method uses these matrix operations for the constrained optimization (Lagrangian multiplier) within the MPC cost function minimization.</p>
+<h3>12.3 Forgetting Factor</h3>
+<p>The algorithm implements a <strong>forgetting factor</strong> mechanism to give more weight to recent data:</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Value (from binary)</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>forgettingHalfTime</td>
+<td><strong>150 min</strong></td>
+<td>Half-life of data relevance</td>
+</tr>
+<tr>
+<td>forgettingFactor</td>
+<td>Derived from half-time</td>
+<td>Exponential decay factor</td>
+</tr>
+<tr>
+<td>DownSlopeHalfTime</td>
+<td>Runtime-adaptive</td>
+<td>Forgetting rate during falling glucose</td>
+</tr>
+<tr>
+<td>UpSlopeHalfTime</td>
+<td>Runtime-adaptive</td>
+<td>Forgetting rate during rising glucose</td>
+</tr>
+</tbody></table>
+<p>These asymmetric forgetting rates ensure that the algorithm adapts faster to falling glucose trends (safety-critical) than to rising trends (less urgent).</p>
+<h3>12.4 Numerical Safety Bounds</h3>
+<p>The decompiled code reveals several hard-coded numerical safety bounds:</p>
+<table>
+<thead>
+<tr>
+<th>Bound</th>
+<th>Value</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Minimum variance floor</td>
+<td><strong>1 x 10^-5</strong></td>
+<td>Prevents numerical underflow in Kalman filter (IEEE 754: 0x3727c5ac)</td>
+</tr>
+<tr>
+<td>Minimum glucose prediction</td>
+<td><strong>0.001 mmol/L</strong></td>
+<td>Ensures non-negative glucose predictions</td>
+</tr>
+<tr>
+<td>Minimum BIR change rate</td>
+<td><strong>0.0007 U/h</strong></td>
+<td>Safety bound on BIR adjustments</td>
+</tr>
+<tr>
+<td>Minimum insulin threshold</td>
+<td><strong>0.1 mU</strong></td>
+<td>Below this, insulin accounting is zeroed</td>
+</tr>
+<tr>
+<td>Minimum rate output</td>
+<td><strong>0.025 U/h</strong></td>
+<td>Hard floor on algorithm&#39;s rate output</td>
+</tr>
+<tr>
+<td>Insulin sensitivity bounds</td>
+<td><strong>0.5 -- 100</strong></td>
+<td>Physiological plausibility range for IS</td>
+</tr>
+<tr>
+<td>ka1 bounds</td>
+<td><strong>0.02 -- 0.15 min^-1</strong></td>
+<td>Insulin action rate constant bounds</td>
+</tr>
+<tr>
+<td>Sentinel value</td>
+<td><strong>-1.0</strong> (0xbf800000)</td>
+<td>Uninitialized parameter indicator</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>13. Clinical Evidence Summary</h2>
+<table>
+<thead>
+<tr>
+<th>Trial</th>
+<th>Population</th>
+<th>N</th>
+<th>Duration</th>
+<th>Key Result</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>KidsAP02 (NEJM 2022)</td>
+<td>Children 1--7 years</td>
+<td>74</td>
+<td>16 weeks</td>
+<td>TIR +8.7pp (71.6% vs 62.9%)</td>
+</tr>
+<tr>
+<td>DAN05 (Lancet Dig Health 2022)</td>
+<td>Children 6--18 years</td>
+<td>133</td>
+<td>6 months</td>
+<td>HbA1c -0.32pp</td>
+</tr>
+<tr>
+<td>AiDAPT (NEJM 2023)</td>
+<td>Pregnant women, T1D</td>
+<td>124</td>
+<td>Pregnancy</td>
+<td>TIR +10.5pp (pregnancy range)</td>
+</tr>
+<tr>
+<td>CLOuD (Diabetes Care 2024)</td>
+<td>Newly diagnosed youth</td>
+<td>97</td>
+<td>48 months</td>
+<td>HbA1c 0.9% lower, TIR +12pp</td>
+</tr>
+<tr>
+<td>Ultra-Rapid Lispro (DTT 2023)</td>
+<td>Adults</td>
+<td>--</td>
+<td>Crossover</td>
+<td>TIR 78.7% vs 76.2%</td>
+</tr>
+<tr>
+<td>Real-World (FDA submission)</td>
+<td>All ages</td>
+<td>9,869</td>
+<td>Median 265 days</td>
+<td>Supported K232603 clearance</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>14. Comparison: CamAPS MPC vs. AAPS oref1</h2>
+<table>
+<thead>
+<tr>
+<th>Aspect</th>
+<th>CamAPS FX (MPC)</th>
+<th>AAPS (oref1)</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Approach</strong></td>
+<td>Model-based optimal control</td>
+<td>Rule-based reactive control</td>
+</tr>
+<tr>
+<td><strong>Physiological model</strong></td>
+<td>8-ODE compartment model</td>
+<td>Simplified IOB/COB model</td>
+</tr>
+<tr>
+<td><strong>State estimation</strong></td>
+<td>IMM with multi-model Kalman filter</td>
+<td>Exponential IOB decay curves</td>
+</tr>
+<tr>
+<td><strong>Prediction</strong></td>
+<td>2.5-hour model-based trajectory</td>
+<td>~6-hour COB impact + IOB extrapolation</td>
+</tr>
+<tr>
+<td><strong>Optimization</strong></td>
+<td>Formal quadratic cost minimization</td>
+<td>Heuristic rate adjustment rules</td>
+</tr>
+<tr>
+<td><strong>Adaptation</strong></td>
+<td>Continuous Bayesian parameter estimation</td>
+<td>Profile-switch based on time blocks</td>
+</tr>
+<tr>
+<td><strong>Cycle time</strong></td>
+<td>8--12 minutes</td>
+<td>5 minutes</td>
+</tr>
+<tr>
+<td><strong>Meal handling</strong></td>
+<td>Hybrid (user announces) + model tracking</td>
+<td>Hybrid + UAM (unannounced meal detection)</td>
+</tr>
+<tr>
+<td><strong>Transparency</strong></td>
+<td>Proprietary, encrypted</td>
+<td>Fully open source</td>
+</tr>
+<tr>
+<td><strong>Regulatory</strong></td>
+<td>CE-marked, FDA 510(k) cleared</td>
+<td>Not regulated (DIY)</td>
+</tr>
+</tbody></table>
+<p>Both systems use the insulin pump as a &quot;dumb&quot; actuator -- the pump receives micro-bolus commands and executes them. The fundamental difference is in the sophistication of the prediction model: CamAPS uses physiological modeling of the glucose-insulin system to predict future glucose, while oref1 uses simpler heuristic calculations. The clinical significance of this difference continues to be debated; both approaches achieve substantial improvements over open-loop therapy.</p>
+<hr>
+<h2>15. Native Library Architecture and JNI Interface</h2>
+<h3>15.1 Library Structure</h3>
+<p>The algorithm is implemented in a stripped ARM64 ELF shared library (<code>libd91238.so</code>, ~500 KB after decryption). The library is loaded by the CamAPS FX Android application via JNI (Java Native Interface). Key structural findings from the reverse engineering:</p>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Architecture</td>
+<td>ARM64 (AArch64)</td>
+</tr>
+<tr>
+<td>Total function symbols</td>
+<td>~480 unique (from .dynsym)</td>
+</tr>
+<tr>
+<td>Algorithm-related functions</td>
+<td><strong>252</strong> decompiled</td>
+</tr>
+<tr>
+<td>Largest function</td>
+<td>SubModel1::InitialiseCovariance (10,368 bytes)</td>
+</tr>
+<tr>
+<td>Second largest</td>
+<td>SubModel1::PredictStep (7,660 bytes)</td>
+</tr>
+<tr>
+<td>Third largest</td>
+<td>SubModelIMM1::InteractStep1 (8,168 bytes)</td>
+</tr>
+<tr>
+<td>NEON SIMD usage</td>
+<td>Extensive (for matrix/vector operations)</td>
+</tr>
+<tr>
+<td>Stack canary protection</td>
+<td>Present (tpidr_el0 register checks)</td>
+</tr>
+</tbody></table>
+<h3>15.2 JNI Entry Points</h3>
+<p>Four exported JNI functions provide the interface between Java and the native algorithm:</p>
+<table>
+<thead>
+<tr>
+<th>JNI Function</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>Java_com_camdiab_fx_1alert_GlobalFunctions_getRecommendation</code></td>
+<td>Main entry: computes insulin recommendation from current CGM + state</td>
+</tr>
+<tr>
+<td><code>Java_com_camdiab_fx_1alert_GlobalFunctions_newPatient</code></td>
+<td>Initializes algorithm state for a new patient (weight, TDD)</td>
+</tr>
+<tr>
+<td><code>Java_com_camdiab_fx_1alert_GlobalFunctions_getTDD</code></td>
+<td>Returns current adapted TDD estimate</td>
+</tr>
+<tr>
+<td><code>Java_com_camdiab_fx_1alert_GlobalFunctions_getSupportKey</code></td>
+<td>Returns a support/diagnostic key</td>
+</tr>
+<tr>
+<td><code>Java_uk_ac_cam_ap_florence_GlobalFunctions_startingClosedLoop</code></td>
+<td>Initializes closed-loop operation</td>
+</tr>
+</tbody></table>
+<p>The package name <code>com.camdiab.fx_alert</code> confirms the CamDiab/Cambridge Diabetes origin. The legacy <code>uk.ac.cam.ap.florence</code> package reference (Florence = the project codename) indicates backward compatibility with earlier research versions.</p>
+<h3>15.3 C++ Class Hierarchy</h3>
+<pre><code>MPC (top-level controller)
+ +-- Model (abstract)
+ |    +-- Model1 (extended model with meal tracking)
+ |         +-- ModelIMM1 (IMM estimator with 8 sub-models)
+ |              +-- SubModelIMM1 (interaction layer per sub-model)
+ |                   +-- SubModel1 (base physiological model + Kalman filter)
+ +-- DataDatabases (patient history, CGM data, insulin records)
+ +-- DataInOut / DataInOutString (state serialization/deserialization)
+ +-- CCRC (CRC checksum for data integrity)
+</code></pre>
+<h3>15.4 Algorithm Parameter Summary</h3>
+<p>All parameter values confirmed through Ghidra reverse engineering of the binary&#39;s static data section:</p>
+<p><strong>Hovorka Model Core Parameters:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Symbol</th>
+<th>Value</th>
+<th>Unit</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Glucose distribution volume</td>
+<td>V_G</td>
+<td>0.14</td>
+<td>L/kg</td>
+</tr>
+<tr>
+<td>Transfer rate (non-acc to acc)</td>
+<td>k_12</td>
+<td>0.07</td>
+<td>min^-1</td>
+</tr>
+<tr>
+<td>Transfer rate (acc to non-acc)</td>
+<td>k_21</td>
+<td>0.05</td>
+<td>min^-1</td>
+</tr>
+<tr>
+<td>Metabolic clearance rate, insulin</td>
+<td>mcr_I</td>
+<td>0.02709</td>
+<td>min^-1</td>
+</tr>
+<tr>
+<td>Basal endogenous glucose production</td>
+<td>EGP_0</td>
+<td>0.0111</td>
+<td>mmol/kg/min</td>
+</tr>
+<tr>
+<td>Unit conversion (composite)</td>
+<td>--</td>
+<td>0.08127</td>
+<td>--</td>
+</tr>
+<tr>
+<td>Unit conversion (glucose)</td>
+<td>--</td>
+<td>5.551</td>
+<td>mmol/L per 100 mg/dL</td>
+</tr>
+<tr>
+<td>Nominal ka rate constant</td>
+<td>--</td>
+<td>0.0191</td>
+<td>min^-1</td>
+</tr>
+</tbody></table>
+<p><strong>MPC Controller Parameters:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Value</th>
+<th>Unit</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>lambdaBaseOrig</td>
+<td>1.6</td>
+<td>--</td>
+</tr>
+<tr>
+<td>lambdaBaseMealOrig</td>
+<td>1.2</td>
+<td>--</td>
+</tr>
+<tr>
+<td>lambdaBaseBolus</td>
+<td>1.0</td>
+<td>--</td>
+</tr>
+<tr>
+<td>BIRasFractionOfTDD</td>
+<td>0.48</td>
+<td>--</td>
+</tr>
+<tr>
+<td>forgettingHalfTime</td>
+<td>150</td>
+<td>min</td>
+</tr>
+<tr>
+<td>trueTargetGlucose</td>
+<td>6.0</td>
+<td>mmol/L</td>
+</tr>
+<tr>
+<td>maximumTargetGlucose</td>
+<td>11.0</td>
+<td>mmol/L</td>
+</tr>
+<tr>
+<td>minimumTargetGlucose</td>
+<td>4.4</td>
+<td>mmol/L</td>
+</tr>
+<tr>
+<td>Maximum TDD</td>
+<td>45.0</td>
+<td>U/day</td>
+</tr>
+<tr>
+<td>Minimum rate</td>
+<td>0.025</td>
+<td>U/h</td>
+</tr>
+<tr>
+<td>BIR normalization</td>
+<td>48</td>
+<td>intervals/day</td>
+</tr>
+</tbody></table>
+<p><strong>IMM Filter Parameters:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Number of sub-models</td>
+<td>8</td>
+</tr>
+<tr>
+<td>equiProbNew[0]</td>
+<td>0.8</td>
+</tr>
+<tr>
+<td>equiProbNew[1]</td>
+<td>0.6</td>
+</tr>
+<tr>
+<td>equiProbNew[2]</td>
+<td>0.9</td>
+</tr>
+<tr>
+<td>multWini pattern</td>
+<td>[1, 1, 2, 2, 1, 1, 2, 2]</td>
+</tr>
+<tr>
+<td>Integration method</td>
+<td>RK4 (4-stage) + analytical insulin action</td>
+</tr>
+<tr>
+<td>Max concurrent meals</td>
+<td>5</td>
+</tr>
+<tr>
+<td>Variance floor</td>
+<td>1 x 10^-5</td>
+</tr>
+</tbody></table>
+<p><strong>Weight and Meal Categories:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Weight category</th>
+<th>Threshold (kg)</th>
+<th>Expected meal size (g CHO)</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>0 (infant)</td>
+<td>&lt; 13</td>
+<td>12</td>
+</tr>
+<tr>
+<td>1 (toddler)</td>
+<td>&lt; 25</td>
+<td>20</td>
+</tr>
+<tr>
+<td>2 (child)</td>
+<td>&lt; 50</td>
+<td>40</td>
+</tr>
+<tr>
+<td>3 (adolescent)</td>
+<td>&lt; 85</td>
+<td>60</td>
+</tr>
+<tr>
+<td>4 (adult)</td>
+<td>&gt;= 85</td>
+<td>80</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>References</h2>
+<ol>
+<li><p>Hovorka R, Canonico V, Chassin LJ, et al. Nonlinear model predictive control of glucose concentration in subjects with type 1 diabetes. <em>Physiological Measurement</em> 25(4):905-920, 2004. PMID: 15382830</p>
+</li>
+<li><p>Hovorka R, Allen JM, Elleri D, et al. Manual closed-loop insulin delivery in children and adolescents with type 1 diabetes: a phase 2 randomised crossover trial. <em>The Lancet</em> 375(9716):743-751, 2010. PMID: 20138357</p>
+</li>
+<li><p>Wilinska ME, Chassin LJ, Acerini CL, et al. Simulation environment to evaluate closed-loop insulin delivery systems in type 1 diabetes. <em>J Diabetes Sci Technol</em> 4(1):132-144, 2010. PMC2769888</p>
+</li>
+<li><p>Hovorka R et al. Closed-loop insulin delivery system. Patent WO2010114929A1, 2010</p>
+</li>
+<li><p>Lal RA, Ekhlaspour L, Hood K, Buckingham B. Realizing a closed-loop (artificial pancreas) system for the treatment of type 1 diabetes. <em>Endocrine Reviews</em> 40(6):1521-1546, 2019</p>
+</li>
+<li><p>Ware J, Allen JM, Boughton CK, et al. Randomized trial of closed-loop control in very young children with type 1 diabetes. <em>NEJM</em> 386:209-219, 2022</p>
+</li>
+<li><p>Boughton CK, Allen JM, Tauschmann M, et al. Assessing the effect of closed-loop insulin delivery from onset of type 1 diabetes in youth on residual beta-cell function. <em>Diabetes Care</em> 47(8):1441-1449, 2024</p>
+</li>
+<li><p>Lee TTM, Collett C, Bergford S, et al. Automated insulin delivery in women with pregnancy complicated by type 1 diabetes. <em>NEJM</em> 389:1566-1578, 2023. PMID: 37796241</p>
+</li>
+<li><p>Burnside MJ, Lewis DM, Crocket HR, et al. Open-source automated insulin delivery in type 1 diabetes. <em>NEJM</em> 387:869-881, 2022</p>
+</li>
+</ol>
+<p>10.Google Patents: WO2010114929A1. Closed-loop insulin delivery system</p>
+<ol start="11">
+<li><p>FDA 510(k) K232603: CamAPS FX Premarket Notification</p>
+</li>
+<li><p>PMC7617696: Safety analysis of Boost and Ease-off modes in 7,464 CamAPS FX users</p>
+</li>
+<li><p>Wilinska ME, Chassin LJ, Acerini CL, et al. Simulation environment to evaluate closed-loop insulin delivery systems in type 1 diabetes. <em>J Diabetes Sci Technol</em> 4(1):132-144, 2010. PMC2769888</p>
+</li>
+</ol>
+<hr>
+<h2>Appendix A: Native Library Encryption &amp; Decryption</h2>
+<p>The CamAPS FX algorithm library is distributed as an encrypted <code>.so</code> file within the APK bundle. It must be decrypted before static analysis (e.g., with Ghidra) is possible. This section documents the complete encryption scheme, key locations, and decryption procedure.</p>
+<h3>A.1 Encryption Scheme</h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Algorithm</strong></td>
+<td>Modified TEA (Tiny Encryption Algorithm)</td>
+</tr>
+<tr>
+<td><strong>Mode</strong></td>
+<td>CBC (Cipher Block Chaining)</td>
+</tr>
+<tr>
+<td><strong>Block size</strong></td>
+<td>8 bytes</td>
+</tr>
+<tr>
+<td><strong>Rounds</strong></td>
+<td>Clamped to [5, 16] via <code>Math.min(Math.max(s, 5), 16)</code></td>
+</tr>
+<tr>
+<td><strong>Delta constant</strong></td>
+<td><code>(short)((sqrt(5)-1) * 2^15)</code> = -25033 (signed) = 0x9E37 (unsigned 16-bit)</td>
+</tr>
+<tr>
+<td><strong>File format</strong></td>
+<td>5-byte header + TEA-CBC encrypted ELF with PKCS padding</td>
+</tr>
+</tbody></table>
+<p>The Feistel network differs from standard TEA only in the round key calculation: <code>rk = (rounds - i) * delta</code> instead of maintaining a running sum.</p>
+<h3>A.2 Key Material per Version</h3>
+<p>Key material is hardcoded in the APK&#39;s DEX bytecode. Each APK version uses different obfuscated class names and different key values. Concrete key values are intentionally omitted from this public document — they can be extracted by following the procedure in A.7.</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Source Location</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Master key</strong></td>
+<td>Loader class, static <code>long</code> field (e.g., field <code>c</code>)</td>
+<td>64-bit value, split into hi/lo 32-bit halves</td>
+</tr>
+<tr>
+<td><strong>Config param</strong></td>
+<td>Config class, <code>int</code> field (deserialized at byte offset 8)</td>
+<td>32-bit value, also used in key schedule</td>
+</tr>
+<tr>
+<td><strong>IV</strong></td>
+<td>Config class, <code>byte[]</code> field (8 bytes at offset 16)</td>
+<td>CBC initialization vector</td>
+</tr>
+<tr>
+<td><strong>i_extra</strong></td>
+<td>Loader method, computed via opaque predicates</td>
+<td>32-bit value XORed with master key halves</td>
+</tr>
+<tr>
+<td><strong>Rounds</strong></td>
+<td>Loader method, computed via opaque predicates, then clamped [5,16]</td>
+<td>Typically 5</td>
+</tr>
+<tr>
+<td><strong>Header skip</strong></td>
+<td>Loader method, <code>InputStream.skip()</code> called via reflection</td>
+<td>Typically 5 bytes</td>
+</tr>
+</tbody></table>
+<p>Note: v190&#39;s native libraries appear to already be unencrypted ELF files in the APKPure bundle.</p>
+<h3>A.3 Obfuscated Class Mapping</h3>
+<table>
+<thead>
+<tr>
+<th>v186 Class</th>
+<th>v190 Class</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>RecordStatus</code></td>
+<td><code>SensorSessionRecordInfoSensorSessionRecordInfoV2</code></td>
+<td>Library loader (contains master key, calls cipher)</td>
+</tr>
+<tr>
+<td><code>CloseGuardDefaultReporter</code></td>
+<td><code>HmacPrfKeyFormat1</code></td>
+<td>TEA-CBC cipher (InputStream filter)</td>
+</tr>
+<tr>
+<td><code>report</code></td>
+<td><code>HmacPrfKeyFormat</code></td>
+<td>Cipher config container (config_param + IV)</td>
+</tr>
+<tr>
+<td><code>ECNRSigner</code> (v186)</td>
+<td><code>addAllEnumType</code> (v190)</td>
+<td>Config byte deserializer</td>
+</tr>
+</tbody></table>
+<h3>A.4 Key Schedule Computation</h3>
+<pre><code class="language-python"># From write(): XOR master key halves with i_extra
+iArr = [master_hi ^ i_extra, i_extra ^ master_lo]
+
+# Construct 64-bit j from iArr
+j = (unsigned)iArr[1] | (iArr[0] &lt;&lt; 32)
+i4 = (int)j      # low 32 bits
+
+# Key derivation (when config_param != 0)
+key1 = i4
+key2 = i4 * config_param          # 32-bit truncated multiply
+key3 = config_param ^ i4
+key4 = (int)(j &gt;&gt; 32)              # arithmetic right shift
+</code></pre>
+<h3>A.5 Opaque Predicates in Loader</h3>
+<p>The loader method (e.g., <code>RecordStatus.a(String)</code> in v186) uses Android API calls as obfuscated constant providers (opaque predicates). jadx typically fails to decompile this method due to its size (~2400 instructions), requiring smali-level analysis.</p>
+<p>Common Android APIs used as opaque predicates:</p>
+<table>
+<thead>
+<tr>
+<th>API Call</th>
+<th>Typical Return</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>MotionEvent.axisFromString(&quot;&quot;)</code></td>
+<td>-1</td>
+<td>Arithmetic operand for i_extra computation</td>
+</tr>
+<tr>
+<td><code>View.getDefaultSize(0, 0)</code></td>
+<td>0</td>
+<td>Arithmetic operand for rounds computation</td>
+</tr>
+<tr>
+<td><code>View.combineMeasuredStates(0, 0)</code></td>
+<td>0</td>
+<td>Part of reflective method name decryption</td>
+</tr>
+<tr>
+<td><code>ViewConfiguration.getTouchSlop()</code></td>
+<td>8</td>
+<td>Part of reflective method name decryption</td>
+</tr>
+<tr>
+<td><code>InputStream.skip(n)</code></td>
+<td>(called via reflection)</td>
+<td>Skips file header before encrypted data</td>
+</tr>
+</tbody></table>
+<p>The pattern is: a constant is loaded, then an API call result is subtracted/added to derive the actual parameter value. The API calls always return deterministic values on Android.</p>
+<h3>A.6 Decryption Procedure</h3>
+<h4>Prerequisites</h4>
+<ul>
+<li>Python 3</li>
+<li>Encrypted <code>.so</code> file from the APK bundle (extract with <code>unzip</code>)</li>
+<li>Key material extracted per A.7</li>
+</ul>
+<h4>Step 1: Extract encrypted library from APK</h4>
+<pre><code class="language-bash"># For split APK (APKPure):
+cd &quot;config.arm64_v8a/lib/arm64-v8a/&quot;
+ls *.so   # e.g., libb67e25.so (encrypted, NOT valid ELF)
+</code></pre>
+<h4>Step 2: Decrypt</h4>
+<pre><code class="language-bash"># The decryption tool (not included in this repo) must be created
+# following the algorithm described in A.1 and A.4, with keys
+# extracted per A.7. Successful decryption produces:
+#   - Valid ELF header (7F 45 4C 46)
+#   - 64-bit AArch64 shared library
+</code></pre>
+<h4>Step 3: Load in Ghidra</h4>
+<pre><code class="language-bash"># Import as AArch64 ELF shared library
+# Auto-analysis will identify functions and data references
+# Key entry point: JNI_OnLoad and exported native methods
+</code></pre>
+<h3>A.7 Extracting Keys for New Versions</h3>
+<p>When CamAPS FX releases a new version with new key material:</p>
+<ol>
+<li><strong>Decompile the APK</strong> with jadx: <code>jadx -d output/ base.apk</code></li>
+<li><strong>Find the loader class</strong>: Search for <code>System.loadLibrary</code> or <code>CloseGuardDefaultReporter</code> (name changes each version)</li>
+<li><strong>Extract master key</strong>: Look for a <code>long</code> constant (field <code>c</code> in the class static init)</li>
+<li><strong>Extract config bytes</strong>: Look for the byte array containing config_param (4 bytes at offset 8) and IV (8 bytes at offset 16)</li>
+<li><strong>Extract i_extra and rounds</strong>: If jadx fails to decompile the loader method, use baksmali/apktool:<pre><code class="language-bash">apktool d -o output/ base.apk
+# Find the loader .smali file
+# Trace the write() call parameters through opaque predicates
+</code></pre>
+</li>
+<li><strong>Build a decryption tool</strong> implementing the TEA-CBC algorithm from A.1 with the extracted key schedule from A.4</li>
+</ol>
+</article>
+      <footer class="site-footer">
+        <p><strong>Research only.</strong> Not a medical device. Insulin dosing errors can cause severe harm or death.</p>
+        <p>Based on <a href="https://github.com/SandraK82/ypsopump-research">SandraK82/ypsopump-research</a> (MIT). Enhanced fork by <a href="https://github.com/master3395/ypsopump-research">master3395</a>.</p>
+      </footer>
+    </div>
+  </div>
+</body>
+</html>

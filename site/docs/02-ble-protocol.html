@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>02 — BLE Protocol: YpsoPump Command Set | YpsoPump Research</title>
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <a href="../index.html">YpsoPump Research</a>
+    <span class="tagline">#WeAreNotWaiting</span>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="Documentation"><h2>Pump and BLE</h2><ul><li><a href="01-hardware.html">01 — hardware</a></li><li><a href="02-ble-protocol.html" class="active">02 — ble protocol</a></li><li><a href="03-encryption.html">03 — encryption</a></li><li><a href="04-key-exchange.html">04 — key exchange</a></li></ul><h2>Backend and security</h2><ul><li><a href="05-backend-communication.html">05 — backend communication</a></li><li><a href="06-closed-loop-algorithm.html">06 — closed loop algorithm</a></li><li><a href="07-obfuscation.html">07 — obfuscation</a></li><li><a href="08-security-findings.html">08 — security findings</a></li><li><a href="09-bypass-options.html">09 — bypass options</a></li><li><a href="10-legal-analysis.html">10 — legal analysis</a></li></ul><h2>CamAPS FX</h2><ul><li><a href="11-camaps-algorithm-analysis.html">11 — camaps algorithm analysis</a></li><li><a href="12-camaps-sideload-bypass.html">12 — camaps sideload bypass</a></li><li><a href="13-play-integrity-bypass-success.html">13 — play integrity bypass success</a></li><li><a href="20-camaps-apk-189-vs-192.html">20 — camaps apk 189 vs 192</a></li><li><a href="21-camaps-liberty-availability.html">21 — camaps liberty availability</a></li><li><a href="22-cgm-error-codes-reference.html">22 — cgm error codes reference</a></li></ul><h2>mylife app</h2><ul><li><a href="14-mylife-app-overview.html">14 — mylife app overview</a></li><li><a href="15-mylife-app-security.html">15 — mylife app security</a></li><li><a href="16-mylife-app-proregia-protocol.html">16 — mylife app proregia protocol</a></li><li><a href="17-mylife-app-components.html">17 — mylife app components</a></li><li><a href="18-mylife-app-bypass-plan.html">18 — mylife app bypass plan</a></li><li><a href="19-key-lifecycle-pump-rotation.html">19 — key lifecycle pump rotation</a></li></ul><h2>Guides</h2><ul><li><a href="../guides/building-a-driver-app.html">building a driver app</a></li><li><a href="../guides/frida-key-extraction.html">frida key extraction</a></li><li><a href="../guides/ble-sniffing-setup.html">ble sniffing setup</a></li></ul><h2>More</h2><ul><li><a href="../index.html">Home</a></li><li><a href="../data/index.html">Data / CSV</a></li><li><a href="https://github.com/master3395/ypsopump-research">GitHub</a></li></ul></nav>
+    <div class="main">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / 02 — BLE Protocol: YpsoPump Command Set</div>
+      
+      <article class="content"><h1>02 — BLE Protocol: YpsoPump Command Set</h1>
+<h2>Overview</h2>
+<p>The YpsoPump exposes a BLE GATT server with custom services and characteristics. Communication is encrypted at the application layer using XChaCha20-Poly1305 (see <a href="03-encryption.html">03-encryption.md</a>). This document describes all 33 commands, the GATT structure and the communication patterns.</p>
+<h2>GATT Service Structure</h2>
+<p>The pump advertises with the device name pattern <code>mylife YpsoPump XXXXXX</code> where <code>XXXXXX</code> is derived from the serial number.</p>
+<h3>BLE UUIDs</h3>
+<table>
+<thead>
+<tr>
+<th>UUID</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>669a0c20-0008-969e-e211-ffffffffffff</code></td>
+<td><strong>Scan Filter</strong> (Advertised Service UUID)</td>
+</tr>
+<tr>
+<td><code>669a0c20-0008-969e-e211-eeeeeeeeeeee</code></td>
+<td><strong>General Purpose Service</strong></td>
+</tr>
+<tr>
+<td><code>669a0c20-0008-969e-e211-fcff0000000a</code></td>
+<td><strong>Data Characteristic A</strong> (Read)</td>
+</tr>
+<tr>
+<td><code>669a0c20-0008-969e-e211-fcff0000000b</code></td>
+<td><strong>Data Characteristic B</strong> (Read)</td>
+</tr>
+<tr>
+<td><code>669a0c20-0008-969e-e211-fcff000000ff</code></td>
+<td><strong>Control Characteristic</strong></td>
+</tr>
+<tr>
+<td><code>669a0c20-0008-969e-e211-fcbeb0147bc5</code></td>
+<td><strong>Pump-specific UUID</strong></td>
+</tr>
+<tr>
+<td><code>fb349b5f-8000-0080-0010-0000adde0000</code></td>
+<td><strong>Secondary Scan Filter</strong></td>
+</tr>
+<tr>
+<td><code>fb349b5f-8000-0080-0010-0000feda0002</code></td>
+<td><strong>Secondary Data</strong></td>
+</tr>
+</tbody></table>
+<p>The <code>669a0c20</code> base UUID family belongs to YpsoPump; <code>fb349b5f</code> is a secondary service.</p>
+<h3>BLE Middleware</h3>
+<p><strong>ProRegia ProBluetooth SDK v2.0.13</strong> (commercial BLE middleware by ProRegia GmbH, package: <code>com.proregia.probluetooth</code>).</p>
+<h3>Services</h3>
+<table>
+<thead>
+<tr>
+<th>Service</th>
+<th>Command Indices</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Base Service</strong></td>
+<td>0 – 4</td>
+<td>Versions, authentication, country config</td>
+</tr>
+<tr>
+<td><strong>Settings Service</strong></td>
+<td>5 – 9</td>
+<td>Settings, date/time management</td>
+</tr>
+<tr>
+<td><strong>History Service</strong></td>
+<td>10 – 25</td>
+<td>Alarm/event/system logs, counters</td>
+</tr>
+<tr>
+<td><strong>Control Service</strong></td>
+<td>26 – 32</td>
+<td>Bolus, TBR, status, notifications</td>
+</tr>
+</tbody></table>
+<h3>Encrypted Payload Structure</h3>
+<p>All data written to characteristics is encrypted with XChaCha20-Poly1305:</p>
+<pre><code>BLE Output = Ciphertext || Nonce[24 bytes]     ← nonce APPENDED
+BLE Input  = Ciphertext || Nonce[24 bytes]     ← nonce at END
+</code></pre>
+<p>Counter data (12 bytes) is appended to plaintext before encryption:</p>
+<ul>
+<li><code>rebootCounter</code> (4 bytes, big-endian int)</li>
+<li><code>writeCounter</code> (8 bytes, big-endian long)</li>
+</ul>
+<h2>Complete Command Set (33 Commands)</h2>
+<p>Source: <code>YpsoCommandChars.java</code> (854 lines, <code>uk.ac.cam.ap.ypsomed_15x.ypsomed</code>)</p>
+<h3>Base Service (Indices 0–4)</h3>
+<table>
+<thead>
+<tr>
+<th>Index</th>
+<th>Command Name</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>0</td>
+<td><code>PUMP_BASE_SERVICE_VERSION</code></td>
+<td>Pump firmware / base service version</td>
+</tr>
+<tr>
+<td>1</td>
+<td><code>MASTER_SOFTWARE_VERSION</code></td>
+<td>Master software version</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>SUPERVISOR_SOFTWARE_VERSION</code></td>
+<td>Supervisor software version</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>AUTHORIZATION_PASSWORD</code></td>
+<td>Authentication / pairing password</td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>PUMP_COUNTRY_CODE</code></td>
+<td>Country configuration</td>
+</tr>
+</tbody></table>
+<h3>Settings Service (Indices 5–9)</h3>
+<table>
+<thead>
+<tr>
+<th>Index</th>
+<th>Command Name</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>5</td>
+<td><code>SETTINGS_SERVICE_VERSION</code></td>
+<td>Settings service version</td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>SETTING_ID</code></td>
+<td>Setting identifier for read/write</td>
+</tr>
+<tr>
+<td>7</td>
+<td><code>SETTING_VALUE</code></td>
+<td>Setting value for read/write</td>
+</tr>
+<tr>
+<td>8</td>
+<td><code>SYSTEM_DATE</code></td>
+<td>System date (read/write)</td>
+</tr>
+<tr>
+<td>9</td>
+<td><code>SYSTEM_TIME</code></td>
+<td>System time (read/write)</td>
+</tr>
+</tbody></table>
+<h3>History Service (Indices 10–25)</h3>
+<table>
+<thead>
+<tr>
+<th>Index</th>
+<th>Command Name</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>10</td>
+<td><code>HISTORY_SERVICE_VERSION</code></td>
+<td>History service version</td>
+</tr>
+<tr>
+<td>11</td>
+<td><code>ALARM_ENTRY_COUNT</code></td>
+<td>Number of alarm log entries</td>
+</tr>
+<tr>
+<td>12</td>
+<td><code>ALARM_ENTRY_INDEX</code></td>
+<td>Alarm entry index selector</td>
+</tr>
+<tr>
+<td>13</td>
+<td><code>ALARM_ENTRY_VALUE</code></td>
+<td>Alarm entry value at current index</td>
+</tr>
+<tr>
+<td>14</td>
+<td><code>EVENT_ENTRY_COUNT</code></td>
+<td>Number of event log entries</td>
+</tr>
+<tr>
+<td>15</td>
+<td><code>EVENT_ENTRY_INDEX</code></td>
+<td>Event entry index selector</td>
+</tr>
+<tr>
+<td>16</td>
+<td><code>EVENT_ENTRY_VALUE</code></td>
+<td>Event entry value at current index</td>
+</tr>
+<tr>
+<td>17</td>
+<td><code>SYSTEM_ENTRY_COUNT</code></td>
+<td>Number of system log entries</td>
+</tr>
+<tr>
+<td>18</td>
+<td><code>COMPLAINT_ENTRY_COUNT</code></td>
+<td>Number of complaint log entries</td>
+</tr>
+<tr>
+<td>19</td>
+<td><code>SYSTEM_ENTRY_INDEX</code></td>
+<td>System entry index selector</td>
+</tr>
+<tr>
+<td>20</td>
+<td><code>COMPLAINT_ENTRY_INDEX</code></td>
+<td>Complaint entry index selector</td>
+</tr>
+<tr>
+<td>21</td>
+<td><code>SYSTEM_ENTRY_VALUE</code></td>
+<td>System entry value at current index</td>
+</tr>
+<tr>
+<td>22</td>
+<td><code>COMPLAINT_ENTRY_VALUE</code></td>
+<td>Complaint entry value at current index</td>
+</tr>
+<tr>
+<td>23</td>
+<td><code>COUNTER_ID</code></td>
+<td>Counter identifier selector</td>
+</tr>
+<tr>
+<td>24</td>
+<td><code>COUNTER_VALUE</code></td>
+<td>Counter value at current ID</td>
+</tr>
+<tr>
+<td>25</td>
+<td><code>CLEAR_HISTORY_PASSWORD</code></td>
+<td>Password to clear history</td>
+</tr>
+</tbody></table>
+<p><strong>History Read Pattern</strong>: COUNT → INDEX → VALUE iteration:</p>
+<ol>
+<li>Read <code>*_ENTRY_COUNT</code> to get total entries</li>
+<li>Write <code>*_ENTRY_INDEX</code> from 0 to count-1</li>
+<li>Read <code>*_ENTRY_VALUE</code> at each index</li>
+</ol>
+<h3>Control Service (Indices 26–32)</h3>
+<table>
+<thead>
+<tr>
+<th>Index</th>
+<th>Command Name</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>26</td>
+<td><code>CONTROL_SERVICE_VERSION</code></td>
+<td>Control service version</td>
+</tr>
+<tr>
+<td>27</td>
+<td><code>START_STOP_BOLUS</code></td>
+<td>Start or stop bolus delivery</td>
+</tr>
+<tr>
+<td>28</td>
+<td><code>GET_BOLUS_STATUS</code></td>
+<td>Current bolus delivery status</td>
+</tr>
+<tr>
+<td>29</td>
+<td><code>START_STOP_TBR</code></td>
+<td>Start or stop Temporary Basal Rate</td>
+</tr>
+<tr>
+<td>30</td>
+<td><code>GET_SYSTEM_STATUS</code></td>
+<td>Battery, reservoir, pump state</td>
+</tr>
+<tr>
+<td>31</td>
+<td><code>BOLUS_STATUS_NOTIFICATION</code></td>
+<td>Bolus status change notification</td>
+</tr>
+<tr>
+<td>32</td>
+<td><code>VIRTUAL_CHAR</code></td>
+<td>Virtual characteristic (internal)</td>
+</tr>
+</tbody></table>
+<h2>Communication Pattern</h2>
+<h3>Connection Sequence</h3>
+<pre><code>1. BLE Scan (filter by service UUID or device name)
+2. Connect GATT
+3. Discover Services
+4. Key Exchange (if no valid shared key)
+   a. Read pump public key + challenge (64 bytes)
+   b. Request server nonce via gRPC
+   c. Google Play Integrity check
+   d. Request 116-byte encrypted payload via gRPC
+   e. Write 116 bytes to pump
+   f. Compute shared key locally
+5. Enable notifications on desired characteristics
+6. Read/Write commands as needed
+</code></pre>
+<h3>Read Command Flow</h3>
+<pre><code>App                                    Pump
+ |                                      |
+ |  writeCharacteristic(cmd_uuid,       |
+ |    encrypted(command_request))        |
+ |-------------------------------------&gt;|
+ |                                      |
+ |  onCharacteristicChanged(cmd_uuid,   |
+ |    encrypted(response_data))         |
+ |&lt;-------------------------------------|
+ |                                      |
+ |  decrypt(response_data) → plaintext  |
+</code></pre>
+<h3>Write Command Flow</h3>
+<pre><code>App                                    Pump
+ |                                      |
+ |  writeCharacteristic(cmd_uuid,       |
+ |    encrypted(command_payload))        |
+ |-------------------------------------&gt;|
+ |                                      |
+ |  onCharacteristicChanged(cmd_uuid,   |
+ |    encrypted(ack/status))            |
+ |&lt;-------------------------------------|
+ |                                      |
+ |  decrypt(ack) → ProStatusCodeEnum    |
+</code></pre>
+<h3>Fragmentation</h3>
+<p>BLE MTU is negotiated after connection (typically 23 bytes default, up to 517 bytes). Payloads exceeding MTU are fragmented across multiple write operations. The pump reassembles fragments before decryption.</p>
+<p>Error code <code>FRAGMENTATION_ERROR</code> (status 141) indicates reassembly failure.</p>
+<h2>Counter System</h2>
+<p>Every encrypted message includes counter data for replay protection:</p>
+<table>
+<thead>
+<tr>
+<th>Counter</th>
+<th>Size</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>writeCounter</code></td>
+<td>8 bytes</td>
+<td>Incremented per write, appended to plaintext before encryption</td>
+</tr>
+<tr>
+<td><code>readCounter</code></td>
+<td>8 bytes</td>
+<td>Validated per read, must be monotonically increasing</td>
+</tr>
+<tr>
+<td><code>rebootCounter</code></td>
+<td>4 bytes</td>
+<td>Incremented on pump reboot</td>
+</tr>
+</tbody></table>
+<h3>Reboot Handling</h3>
+<pre><code>if (rebootCounter_pump == rebootCounter_app):
+    → Normal operation
+if (rebootCounter_pump &gt; rebootCounter_app):
+    → Pump rebooted; reset writeCounter to 0
+    → Store new rebootCounter
+    → NO new key exchange required (shared key survives reboot)
+if (rebootCounter_pump &lt; 0):
+    → IllegalArgumentException
+</code></pre>
+<h2>Data Repository Fields</h2>
+<p>The app maintains a <code>DataRepositoryImp</code> (1614 lines in decompiled source) with these pump-related fields:</p>
+<pre><code>alarmLog:               ArrayList&lt;byte[]&gt;
+eventLog:               ArrayList&lt;byte[]&gt;
+systemLog:              ArrayList&lt;byte[]&gt;
+bootTimeToFactoryTime:  long
+commProtocol:           int
+serialNumber:           String
+model:                  int
+passkey:                short
+password:               int
+profile_A:              float[24]   // 24 hourly basal rates
+profile_B:              float[24]   // alternate profile
+isProfileA_active:      boolean
+factoryTimeKeyExchange: long
+lastPumpDisplayTime:    long
+</code></pre>
+<h2>Timing</h2>
+<p>Factory time is used internally by the pump. Conversions:</p>
+<ul>
+<li><code>factoryTimeToYpsoDisplayTime</code> — offset from factory epoch to display time</li>
+<li><code>bootTimeToFactoryTime</code> — offset from boot time to factory time</li>
+<li>All log entries use factory time; the app converts for display</li>
+</ul>
+<h2>Supported Device Types</h2>
+<table>
+<thead>
+<tr>
+<th>Device</th>
+<th>Encryption</th>
+<th>Backend Validation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>YpsoPump</strong></td>
+<td>XChaCha20-Poly1305 + Curve25519</td>
+<td>gRPC 9-step key exchange</td>
+</tr>
+<tr>
+<td>Dana-i / Dana RS</td>
+<td>Password-based</td>
+<td>None</td>
+</tr>
+<tr>
+<td>Dexcom G6/G7</td>
+<td>EC-Crypto</td>
+<td>None</td>
+</tr>
+<tr>
+<td>FreeStyle Libre 3/3+</td>
+<td>Proprietary</td>
+<td>None</td>
+</tr>
+</tbody></table>
+<p>The YpsoPump has by far the most sophisticated BLE security of any insulin pump on the market.</p>
+</article>
+      <footer class="site-footer">
+        <p><strong>Research only.</strong> Not a medical device. Insulin dosing errors can cause severe harm or death.</p>
+        <p>Based on <a href="https://github.com/SandraK82/ypsopump-research">SandraK82/ypsopump-research</a> (MIT). Enhanced fork by <a href="https://github.com/master3395/ypsopump-research">master3395</a>.</p>
+      </footer>
+    </div>
+  </div>
+</body>
+</html>

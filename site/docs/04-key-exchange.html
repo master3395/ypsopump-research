@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>04 — Key Exchange: 9-Step Protocol | YpsoPump Research</title>
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <a href="../index.html">YpsoPump Research</a>
+    <span class="tagline">#WeAreNotWaiting</span>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="Documentation"><h2>Pump and BLE</h2><ul><li><a href="01-hardware.html">01 — hardware</a></li><li><a href="02-ble-protocol.html">02 — ble protocol</a></li><li><a href="03-encryption.html">03 — encryption</a></li><li><a href="04-key-exchange.html" class="active">04 — key exchange</a></li></ul><h2>Backend and security</h2><ul><li><a href="05-backend-communication.html">05 — backend communication</a></li><li><a href="06-closed-loop-algorithm.html">06 — closed loop algorithm</a></li><li><a href="07-obfuscation.html">07 — obfuscation</a></li><li><a href="08-security-findings.html">08 — security findings</a></li><li><a href="09-bypass-options.html">09 — bypass options</a></li><li><a href="10-legal-analysis.html">10 — legal analysis</a></li></ul><h2>CamAPS FX</h2><ul><li><a href="11-camaps-algorithm-analysis.html">11 — camaps algorithm analysis</a></li><li><a href="12-camaps-sideload-bypass.html">12 — camaps sideload bypass</a></li><li><a href="13-play-integrity-bypass-success.html">13 — play integrity bypass success</a></li><li><a href="20-camaps-apk-189-vs-192.html">20 — camaps apk 189 vs 192</a></li><li><a href="21-camaps-liberty-availability.html">21 — camaps liberty availability</a></li><li><a href="22-cgm-error-codes-reference.html">22 — cgm error codes reference</a></li></ul><h2>mylife app</h2><ul><li><a href="14-mylife-app-overview.html">14 — mylife app overview</a></li><li><a href="15-mylife-app-security.html">15 — mylife app security</a></li><li><a href="16-mylife-app-proregia-protocol.html">16 — mylife app proregia protocol</a></li><li><a href="17-mylife-app-components.html">17 — mylife app components</a></li><li><a href="18-mylife-app-bypass-plan.html">18 — mylife app bypass plan</a></li><li><a href="19-key-lifecycle-pump-rotation.html">19 — key lifecycle pump rotation</a></li></ul><h2>Guides</h2><ul><li><a href="../guides/building-a-driver-app.html">building a driver app</a></li><li><a href="../guides/frida-key-extraction.html">frida key extraction</a></li><li><a href="../guides/ble-sniffing-setup.html">ble sniffing setup</a></li></ul><h2>More</h2><ul><li><a href="../index.html">Home</a></li><li><a href="../data/index.html">Data / CSV</a></li><li><a href="https://github.com/master3395/ypsopump-research">GitHub</a></li></ul></nav>
+    <div class="main">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / 04 — Key Exchange: 9-Step Protocol</div>
+      
+      <article class="content"><h1>04 — Key Exchange: 9-Step Protocol</h1>
+<h2>Overview</h2>
+<p>The YpsoPump uses a sophisticated 9-step key exchange protocol involving the app, a backend server (ProRegia gRPC) and the pump hardware. The backend generates a cryptographic 116-byte payload that only the pump can validate, ensuring that only authorised apps can establish a shared key.</p>
+<h2>Sequence Diagram</h2>
+<pre><code>App                          Backend (gRPC)                    Pump
+ │                               │                               │
+ │  STEP 1: BLE Read (64 bytes) │                               │
+ │◄──────────────────────────────────────────────────────────────│
+ │  [Challenge 32B] + [Pump Public Key 32B (Curve25519)]         │
+ │                               │                               │
+ │  STEP 2: (OBSOLETE — skipped on Android)                      │
+ │                               │                               │
+ │  STEP 3: gRPC NonceRequest    │                               │
+ │──────────────────────────────►│                               │
+ │  DeviceIdentifier(btAddr, id) │                               │
+ │◄──────────────────────────────│                               │
+ │  ServerNonce (24 bytes)       │                               │
+ │                               │                               │
+ │  STEP 4: Google Play Integrity API (up to 30s timeout)        │
+ │  integrityToken = PlayIntegrity(cloudProjectNumber, nonce)    │
+ │                               │                               │
+ │  STEP 5: gRPC EncryptKey      │                               │
+ │──────────────────────────────►│                               │
+ │  challenge, pumpPubKey,       │                               │
+ │  appPubKey, btAddr, nonce,    │                               │
+ │  integrityToken, deviceId     │                               │
+ │◄──────────────────────────────│                               │
+ │  encryptedBytes (116 bytes)   │                               │
+ │                               │                               │
+ │  STEP 6: BLE Write (116 bytes)│                               │
+ │──────────────────────────────────────────────────────────────►│
+ │  Pump validates 116 bytes cryptographically                   │
+ │                               │                               │
+ │  STEP 7: Counter Reset (local)│                               │
+ │  writeCounter = 0             │                               │
+ │  readCounter = 0              │                               │
+ │                               │                               │
+ │  STEP 8: Shared Key (local)   │                               │
+ │  raw = scalarmult(priv, pub)  │                               │
+ │  key = hchacha20(raw, 0x00…)  │                               │
+ │  → Stored in EncryptedSharedPreferences                       │
+ │                               │                               │
+ │  STEP 9: COMPLETED            │                               │
+</code></pre>
+<h2>Step-by-Step Details</h2>
+<h3>Step 1: Read Pump Challenge + Public Key</h3>
+<p>The app reads 64 bytes from a dedicated key exchange characteristic:</p>
+<table>
+<thead>
+<tr>
+<th>Offset</th>
+<th>Size</th>
+<th>Content</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>0</td>
+<td>32 bytes</td>
+<td>Random challenge (generated per connection)</td>
+</tr>
+<tr>
+<td>32</td>
+<td>32 bytes</td>
+<td>Pump&#39;s Curve25519 public key (factory-burned, static)</td>
+</tr>
+</tbody></table>
+<p>The pump public key <strong>never changes</strong> — it is burned into the STM32F051 flash at manufacturing.</p>
+<h3>Step 2: (Obsolete)</h3>
+<p>This step was part of an older protocol version and is skipped on current Android builds. It may have involved local key attestation.</p>
+<h3>Step 3: Request Server Nonce</h3>
+<p>The app sends a <code>NonceRequest</code> to the ProRegia gRPC backend:</p>
+<pre><code class="language-protobuf">message NonceRequest {
+    DeviceIdentifier device = 1;
+}
+
+message DeviceIdentifier {
+    Metrics metrics = 1;              // Same Metrics proto as EncryptKeyRequest
+    string device_id = 2;            // UUID from SharedPreferences &quot;proregia_prefs&quot;
+    string bt_address = 3;           // BT MAC (uppercase hex)
+}
+
+// Response
+message ServerNonce {
+    string server_nonce = 1;  // 24 bytes (hex-encoded string)
+    int32 log_level = 2;     // Server-requested log level
+}
+</code></pre>
+<p><strong>Endpoint</strong>: <code>connect.cam.pr.sec01.proregia.io:443</code></p>
+<h3>Step 4: Google Play Integrity Check</h3>
+<p>The app requests an integrity token from the Google Play Integrity API:</p>
+<pre><code class="language-kotlin">val integrityToken = PlayIntegrity.getToken(
+    cloudProjectNumber,
+    serverNonce
+)
+// Timeout: up to 30 seconds
+</code></pre>
+<p>This token proves to the backend that:</p>
+<ul>
+<li>The app is the genuine CamAPS FX from Play Store</li>
+<li>The device passes integrity checks (not rooted, verified boot)</li>
+<li>The request is fresh (bound to server nonce)</li>
+</ul>
+<h3>Step 5: Encrypt Key Request</h3>
+<p>The app sends all collected data to the backend:</p>
+<pre><code class="language-protobuf">message EncryptKeyRequest {
+    string challenge = 1;                    // 32 bytes from pump (uppercase hex)
+    string pump_public_key = 2;              // 32 bytes from pump (uppercase hex)
+    string app_public_key = 3;               // 32 bytes Curve25519 (uppercase hex)
+    string bt_address = 4;                   // BT MAC (uppercase hex)
+    string message_attestation_object = 5;   // Google Play Integrity token (JWS string)
+    string nonce = 6;                        // 24 bytes server nonce (uppercase hex)
+    Metrics metrics = 7;                     // Device/app metadata
+    string device_id = 8;                    // UUID string
+}
+
+message Metrics {
+    string platform = 1;              // &quot;Android&quot;
+    string model = 2;                 // e.g. &quot;SM-A226B&quot; or &quot;Pixel 7a&quot;
+    string os_type = 3;               // SDK_INT as string, e.g. &quot;33&quot;
+    string os_version = 4;            // e.g. &quot;13&quot;
+    string manufacturer = 5;          // e.g. &quot;samsung&quot; or &quot;Google&quot;
+    string device_serial = 6;         // &quot;no Serial&quot; (hardcoded)
+    string application_name = 7;      // App display name, e.g. &quot;mylife CamAPS FX&quot;
+    string application_package = 8;   // e.g. &quot;com.camdiab.fx_alert.mgdl&quot;
+    string library_version = 9;       // ProBluetooth SDK version
+    bool xamarin = 10;                // false for Android native
+}
+
+message EncryptKeyResponse {
+    bytes encrypted_bytes = 1;    // 116 bytes
+}
+</code></pre>
+<h3>The 116-Byte Payload (Reconstructed)</h3>
+<pre><code>116 bytes = Cryptographic payload for pump validation
+┌──────────────────────────────────────┐
+│ App Public Key        (32 bytes)     │  ← So pump can compute shared key
+├──────────────────────────────────────┤
+│ Challenge-Response    (32 bytes)     │  ← Proves backend knows the challenge
+├──────────────────────────────────────┤
+│ Nonce / IV            (24 bytes)     │  ← For encryption
+├──────────────────────────────────────┤
+│ Auth Tag              (16 bytes)     │  ← AEAD MAC (Poly1305 or AES-GCM)
+├──────────────────────────────────────┤
+│ Metadata              (12 bytes)     │  ← Timestamp, flags, version
+└──────────────────────────────────────┘
+  = 116 bytes total
+</code></pre>
+<p>The payload is encrypted/signed using the pump&#39;s <strong>Pre-Shared Key (PSK)</strong> — a 256-bit secret known to the Utimaco Cloud HSM and burned into the pump at manufacturing. <strong>Only the HSM and the pump know this PSK.</strong></p>
+<h3>Step 6: Write to Pump</h3>
+<p>The 116 bytes are written to the key exchange characteristic. The pump:</p>
+<ol>
+<li>Decrypts/verifies using its PSK</li>
+<li>Extracts the app&#39;s public key</li>
+<li>Computes its own copy of the shared key via ECDH</li>
+<li>Stores the shared key internally</li>
+<li>Returns success or error via notification</li>
+</ol>
+<h3>Step 7: Counter Reset</h3>
+<p>On successful key exchange, the app resets:</p>
+<ul>
+<li><code>writeCounter = 0</code></li>
+<li><code>readCounter = 0</code></li>
+<li><code>rebootCounter</code> is read from the pump</li>
+</ul>
+<h3>Step 8: Local Shared Key Computation</h3>
+<pre><code>raw = crypto_scalarmult(appPrivateKey, pumpPublicKey)  // Curve25519
+sharedKey = crypto_core_hchacha20(raw, zeroNonce)       // HChaCha20
+</code></pre>
+<p>Both the app and pump independently compute the same shared key.</p>
+<h3>Step 9: Complete</h3>
+<p>Keys are stored in <code>EncryptedSharedPreferences</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>sharedKey</code></td>
+<td>32-byte derived key</td>
+</tr>
+<tr>
+<td><code>privateKey</code></td>
+<td>32-byte app private key</td>
+</tr>
+<tr>
+<td><code>pumpPublicKey</code></td>
+<td>32-byte pump public key</td>
+</tr>
+<tr>
+<td><code>pumpPublicKeyDate</code></td>
+<td>Timestamp of pump key read</td>
+</tr>
+<tr>
+<td><code>sharedKeyDate</code></td>
+<td>Timestamp for 28-day expiry check</td>
+</tr>
+<tr>
+<td><code>writeCounter</code></td>
+<td>Current write counter</td>
+</tr>
+<tr>
+<td><code>readCounter</code></td>
+<td>Current read counter</td>
+</tr>
+</tbody></table>
+<h2>Backend Infrastructure</h2>
+<h3>Utimaco Cloud HSM</h3>
+<p>The backend uses a <strong>Utimaco Cloud HSM</strong> for all cryptographic operations. Each pump&#39;s PSK is stored in the HSM, never exposed to application servers. The <code>EncryptKey</code> gRPC handler:</p>
+<ol>
+<li>Verifies the Google Play Integrity token</li>
+<li>Looks up the pump&#39;s PSK by device identifier</li>
+<li>Constructs and encrypts the 116-byte payload using the PSK</li>
+<li>Returns it to the app</li>
+</ol>
+<h3>No Certificate Pinning</h3>
+<p>The gRPC channel to <code>connect.cam.pr.sec01.proregia.io:443</code> uses standard TLS <strong>without certificate pinning</strong> (<code>ManagedChannelBuilder</code> without pinning configuration). This is a significant security finding — see <a href="08-security-findings.html">08-security-findings.md</a>.</p>
+<h2>Bypass Strategies</h2>
+<h3>Strategy 1: Frida Key Extraction (Post Key Exchange)</h3>
+<p>After a legitimate key exchange completes, extract the shared key via Frida hooks. See <a href="../guides/frida-key-extraction.html">../guides/frida-key-extraction.md</a>.</p>
+<h3>Strategy 2: Pump Faking with CamAPS Hijack</h3>
+<p>Use Frida to fake the pump towards CamAPS, intercept the 116-byte payload, then relay it to the real pump from a custom app. This allows using CamAPS as a &quot;key exchange proxy&quot; without reimplementing the backend communication. See <a href="09-bypass-options.html">09-bypass-options.md</a>.</p>
+<h3>Strategy 3: gRPC MITM</h3>
+<p>Since there is no certificate pinning, a MITM proxy on a rooted phone can intercept the full key exchange. See <a href="08-security-findings.html">08-security-findings.md</a>.</p>
+<h3>Strategy 4: SWD Flash Extraction</h3>
+<p>If the STM32F051 RDP is not enabled, the PSK can be extracted via SWD, enabling completely offline key exchanges without any backend.</p>
+<h2>Error Handling</h2>
+<table>
+<thead>
+<tr>
+<th>Error Code</th>
+<th>Status</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>KEY_EXCHANGE_ERROR_BLOCKED_OR_BUSY</code></td>
+<td>136</td>
+<td>Pump temporarily blocked</td>
+</tr>
+<tr>
+<td><code>KEY_EXCHANGE_ERROR_PUMP_NOT_READY</code></td>
+<td>137</td>
+<td>Pump not in key exchange mode</td>
+</tr>
+<tr>
+<td><code>KEY_EXCHANGE_ERROR_INVALID_SERVER_NONCE</code></td>
+<td>160</td>
+<td>Nonce NULL or wrong length</td>
+</tr>
+<tr>
+<td><code>KEY_EXCHANGE_ERROR_GENERAL</code></td>
+<td>161</td>
+<td>General key exchange error</td>
+</tr>
+<tr>
+<td><code>KEY_EXCHANGE_ERROR_NULL_AUTH_TOKEN</code></td>
+<td>162</td>
+<td>Integrity token is null</td>
+</tr>
+<tr>
+<td><code>KEY_EXCHANGE_ERROR_INVALID_AUTH_TOKEN</code></td>
+<td>163</td>
+<td>Integrity token invalid</td>
+</tr>
+<tr>
+<td><code>KEY_EXCHANGE_RUNNING</code></td>
+<td>178</td>
+<td>Key exchange already in progress</td>
+</tr>
+</tbody></table>
+</article>
+      <footer class="site-footer">
+        <p><strong>Research only.</strong> Not a medical device. Insulin dosing errors can cause severe harm or death.</p>
+        <p>Based on <a href="https://github.com/SandraK82/ypsopump-research">SandraK82/ypsopump-research</a> (MIT). Enhanced fork by <a href="https://github.com/master3395/ypsopump-research">master3395</a>.</p>
+      </footer>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>03 — Encryption: Multi-Layer Security Architecture | YpsoPump Research</title>
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <a href="../index.html">YpsoPump Research</a>
+    <span class="tagline">#WeAreNotWaiting</span>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="Documentation"><h2>Pump and BLE</h2><ul><li><a href="01-hardware.html">01 — hardware</a></li><li><a href="02-ble-protocol.html">02 — ble protocol</a></li><li><a href="03-encryption.html" class="active">03 — encryption</a></li><li><a href="04-key-exchange.html">04 — key exchange</a></li></ul><h2>Backend and security</h2><ul><li><a href="05-backend-communication.html">05 — backend communication</a></li><li><a href="06-closed-loop-algorithm.html">06 — closed loop algorithm</a></li><li><a href="07-obfuscation.html">07 — obfuscation</a></li><li><a href="08-security-findings.html">08 — security findings</a></li><li><a href="09-bypass-options.html">09 — bypass options</a></li><li><a href="10-legal-analysis.html">10 — legal analysis</a></li></ul><h2>CamAPS FX</h2><ul><li><a href="11-camaps-algorithm-analysis.html">11 — camaps algorithm analysis</a></li><li><a href="12-camaps-sideload-bypass.html">12 — camaps sideload bypass</a></li><li><a href="13-play-integrity-bypass-success.html">13 — play integrity bypass success</a></li><li><a href="20-camaps-apk-189-vs-192.html">20 — camaps apk 189 vs 192</a></li><li><a href="21-camaps-liberty-availability.html">21 — camaps liberty availability</a></li><li><a href="22-cgm-error-codes-reference.html">22 — cgm error codes reference</a></li></ul><h2>mylife app</h2><ul><li><a href="14-mylife-app-overview.html">14 — mylife app overview</a></li><li><a href="15-mylife-app-security.html">15 — mylife app security</a></li><li><a href="16-mylife-app-proregia-protocol.html">16 — mylife app proregia protocol</a></li><li><a href="17-mylife-app-components.html">17 — mylife app components</a></li><li><a href="18-mylife-app-bypass-plan.html">18 — mylife app bypass plan</a></li><li><a href="19-key-lifecycle-pump-rotation.html">19 — key lifecycle pump rotation</a></li></ul><h2>Guides</h2><ul><li><a href="../guides/building-a-driver-app.html">building a driver app</a></li><li><a href="../guides/frida-key-extraction.html">frida key extraction</a></li><li><a href="../guides/ble-sniffing-setup.html">ble sniffing setup</a></li></ul><h2>More</h2><ul><li><a href="../index.html">Home</a></li><li><a href="../data/index.html">Data / CSV</a></li><li><a href="https://github.com/master3395/ypsopump-research">GitHub</a></li></ul></nav>
+    <div class="main">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / 03 — Encryption: Multi-Layer Security Architecture</div>
+      
+      <article class="content"><h1>03 — Encryption: Multi-Layer Security Architecture</h1>
+<h2>Overview</h2>
+<p>CamAPS FX employs <strong>five distinct encryption layers</strong>, ranging from BLE transport to app hardening. This document details each layer, focusing on the BLE transport encryption that must be replicated for any third-party driver.</p>
+<h2>Layer 1: BLE Transport Encryption (XChaCha20-Poly1305)</h2>
+<p>This is the primary encryption layer for pump ↔ app communication.</p>
+<h3>Algorithm</h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Cipher</strong></td>
+<td>XChaCha20-Poly1305 AEAD</td>
+</tr>
+<tr>
+<td><strong>Library</strong></td>
+<td>libsodium 1.0.20 via Lazysodium (JNA)</td>
+</tr>
+<tr>
+<td><strong>Key size</strong></td>
+<td>256 bits (32 bytes)</td>
+</tr>
+<tr>
+<td><strong>Nonce size</strong></td>
+<td>192 bits (24 bytes) — randomly generated per message</td>
+</tr>
+<tr>
+<td><strong>Auth tag</strong></td>
+<td>128 bits (16 bytes) — Poly1305 MAC</td>
+</tr>
+<tr>
+<td><strong>Functions</strong></td>
+<td><code>crypto_aead_xchacha20poly1305_ietf_encrypt</code> / <code>_decrypt</code></td>
+</tr>
+</tbody></table>
+<h3>Message Structure</h3>
+<p><strong>Important</strong>: The nonce is <strong>appended</strong> (not prepended) in the BLE payload.</p>
+<pre><code>Encrypted BLE Payload:
+┌──────────────────────────────────┬──────────────┐
+│  Ciphertext + Tag (var + 16B)    │  Nonce (24B) │
+└──────────────────────────────────┴──────────────┘
+
+Plaintext before encryption:
+┌──────────────────────┬──────────────────────────────┐
+│  Command Data (var)  │  Counter Data (12B)          │
+│                      │  [rebootCounter 4B, big-end] │
+│                      │  [writeCounter 8B, big-end]  │
+└──────────────────────┴──────────────────────────────┘
+</code></pre>
+<h3>XChaCha20 vs ChaCha20</h3>
+<p>XChaCha20 uses a 24-byte nonce instead of the standard 12-byte nonce. This is critical because:</p>
+<ol>
+<li><strong>Random nonce safety</strong> — with 192 bits, random nonce collisions are astronomically unlikely (birthday bound at ~2^96 messages)</li>
+<li><strong>No nonce counter needed</strong> — each message generates a fresh random nonce</li>
+<li><strong>HChaCha20 subkey derivation</strong> — internally, XChaCha20 uses the first 16 bytes of the nonce with HChaCha20 to derive a subkey, then uses the remaining 8 bytes as a standard ChaCha20 nonce</li>
+</ol>
+<h3>Implementation (from decompiled <code>write.java</code>)</h3>
+<pre><code>// Encryption (from decompiled write.java, method &quot;read()&quot;, line 121)
+nonce = random_bytes(24)
+counter_data = rebootCounter(4 bytes, big-endian) || writeCounter(8 bytes, big-endian)
+plaintext = command_data || counter_data
+ciphertext = crypto_aead_xchacha20poly1305_ietf_encrypt(
+    plaintext,
+    associated_data=null,
+    nonce,
+    shared_key
+)
+ble_payload = ciphertext || nonce  // NOTE: nonce APPENDED, not prepended!
+
+// Decryption (from write.java, method &quot;RemoteActionCompatParcelizer()&quot;, line 492)
+nonce = ble_payload[-24:]                    // last 24 bytes
+ciphertext = ble_payload[:-24]               // everything before nonce
+plaintext = crypto_aead_xchacha20poly1305_ietf_decrypt(
+    ciphertext,
+    associated_data=null,
+    nonce,
+    shared_key
+)
+command_data = plaintext[:-12]
+reboot_counter = plaintext[-12:-8]           // 4 bytes, big-endian int
+read_counter = plaintext[-8:]                // 8 bytes, big-endian long
+</code></pre>
+<h2>Layer 2: Key Derivation (Shared Key via Curve25519)</h2>
+<p>The 32-byte shared key used for XChaCha20-Poly1305 is derived from an ECDH exchange:</p>
+<pre><code>Step 1: raw_shared = crypto_scalarmult(app_private_key, pump_public_key)
+        // Curve25519 ECDH — produces 32-byte raw shared secret
+
+Step 2: shared_key = crypto_core_hchacha20(raw_shared, zero_nonce)
+        // HChaCha20 KDF — converts raw ECDH output to a proper key
+        // zero_nonce = 16 bytes of 0x00
+</code></pre>
+<h3>Key Properties</h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Size</th>
+<th>Storage</th>
+<th>Lifetime</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>App private key</td>
+<td>32 bytes</td>
+<td>EncryptedSharedPreferences</td>
+<td>Per key exchange</td>
+</tr>
+<tr>
+<td>App public key</td>
+<td>32 bytes</td>
+<td>Sent to backend in Step 5</td>
+<td>Per key exchange</td>
+</tr>
+<tr>
+<td>Pump public key</td>
+<td>32 bytes</td>
+<td>EncryptedSharedPreferences</td>
+<td>Static (factory-burned)</td>
+</tr>
+<tr>
+<td>Shared key</td>
+<td>32 bytes</td>
+<td>EncryptedSharedPreferences</td>
+<td>28 days (app-enforced)</td>
+</tr>
+</tbody></table>
+<h3>Critical Finding: App-Side Expiry Only</h3>
+<p>The <strong>28-day key expiration is enforced APP-SIDE ONLY</strong>. The pump itself does not check the age of the shared key. This means:</p>
+<ul>
+<li>Manipulating <code>sharedKeyDate</code> in SharedPreferences extends key validity indefinitely</li>
+<li>Once a shared key is extracted, it works until the next key exchange occurs</li>
+<li>The pump accepts encrypted commands with a valid shared key regardless of age</li>
+</ul>
+<h2>Layer 3: Backend / Cloud Sync Encryption</h2>
+<p>Data synchronized to the cloud uses separate encryption:</p>
+<table>
+<thead>
+<tr>
+<th>Algorithm</th>
+<th>Purpose</th>
+<th>Details</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>RSA/ECB/PKCS1Padding</td>
+<td>Asymmetric key wrapping</td>
+<td>Found in <code>getMaximumBolusSuggestion</code> class</td>
+</tr>
+<tr>
+<td>AES/CBC/PKCS5Padding</td>
+<td>Symmetric data encryption</td>
+<td>General data at rest</td>
+</tr>
+<tr>
+<td>PBKDF2WithHmacSHA256</td>
+<td>Key derivation from password</td>
+<td>Cloud authentication</td>
+</tr>
+<tr>
+<td>AES-128-CBC (no auth!)</td>
+<td>Account encryption</td>
+<td>SHA-256 truncated to 16 bytes — <strong>weak</strong></td>
+</tr>
+</tbody></table>
+<h3>Cloud Sync Flow</h3>
+<pre><code>SyncDecryptedDTO → encrypt → SyncEncryptedDTO → upload to MyLife Cloud
+</code></pre>
+<p><strong>Vulnerability</strong>: AES-128-CBC without authentication (no HMAC/AEAD). SHA-256 hash truncated to 16 bytes for key material. This is susceptible to padding oracle attacks.</p>
+<h2>Layer 4: Local Database (SQLCipher)</h2>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Engine</strong></td>
+<td>SQLCipher 4.9.0 Commercial</td>
+</tr>
+<tr>
+<td><strong>Native lib</strong></td>
+<td><code>libd7c23b.so</code> (5.7 MB) with embedded OpenSSL 3.0.16</td>
+</tr>
+<tr>
+<td><strong>Encryption</strong></td>
+<td>AES-256 per-page encryption</td>
+</tr>
+<tr>
+<td><strong>Integrity</strong></td>
+<td>HMAC per page</td>
+</tr>
+<tr>
+<td><strong>KDF</strong></td>
+<td>PBKDF2 (configurable iterations)</td>
+</tr>
+<tr>
+<td><strong>Hash</strong></td>
+<td>SHA-256 / SHA-512 for HMAC</td>
+</tr>
+</tbody></table>
+<p>The SQLCipher database stores all local pump data, CGM readings, and algorithm state. The database key is derived from user credentials and stored in the Android Keystore.</p>
+<h2>Layer 5: App Hardening (DexGuard)</h2>
+<p>See <a href="07-obfuscation.html">07-obfuscation.md</a> for full details. Key crypto-relevant points:</p>
+<ul>
+<li>All crypto method names are obfuscated</li>
+<li>String constants (including algorithm names) are encrypted at runtime</li>
+<li>Native security library (<code>libe61d.so</code>) performs anti-tampering checks</li>
+<li>The closed-loop algorithm is stored in an AES-256 encrypted native library (<code>liba532a9.so</code>)</li>
+</ul>
+<h2>Encryption Stack Summary</h2>
+<pre><code>┌─────────────────────────────────────────────┐
+│  Layer 5: DexGuard (code obfuscation)       │
+├─────────────────────────────────────────────┤
+│  Layer 4: SQLCipher (local DB encryption)   │
+├─────────────────────────────────────────────┤
+│  Layer 3: AES-CBC / RSA (cloud sync)        │
+├─────────────────────────────────────────────┤
+│  Layer 2: Curve25519 ECDH + HChaCha20 KDF  │
+├─────────────────────────────────────────────┤
+│  Layer 1: XChaCha20-Poly1305 (BLE AEAD)    │  ← MUST REPLICATE
+└─────────────────────────────────────────────┘
+</code></pre>
+<p>For building a third-party driver, only <strong>Layers 1 and 2</strong> need to be replicated. Layers 3–5 are specific to the CamAPS FX app.</p>
+<h2>Practical Implementation</h2>
+<h3>Using Lazysodium-Android (Java/Kotlin)</h3>
+<pre><code class="language-kotlin">// Dependency: com.goterl:lazysodium-android:5.1.0
+// Dependency: net.java.dev.jna:jna:5.14.0@aar
+
+val lazySodium = LazySodiumAndroid(SodiumAndroid())
+
+// Key generation
+val keyPair = lazySodium.cryptoBoxKeypair()
+val appPrivateKey = keyPair.secretKey  // 32 bytes
+val appPublicKey = keyPair.publicKey   // 32 bytes
+
+// Shared key computation (after receiving pumpPublicKey)
+val rawShared = ByteArray(32)
+lazySodium.cryptoScalarmult(rawShared, appPrivateKey, pumpPublicKey)
+
+val sharedKey = ByteArray(32)
+val zeroNonce = ByteArray(16)  // 16 zero bytes
+lazySodium.cryptoCoreHChaCha20(sharedKey, zeroNonce, rawShared, null)
+
+// Encrypt
+val nonce = lazySodium.randomBytesBuf(24)
+val plaintext = commandData + writeCounterBytes + rebootCounterBytes
+val ciphertext = ByteArray(plaintext.size + 16)  // +16 for tag
+lazySodium.cryptoAeadXChaCha20Poly1305IetfEncrypt(
+    ciphertext, null, plaintext, plaintext.size.toLong(),
+    null, 0, null, nonce, sharedKey
+)
+val blePayload = nonce + ciphertext
+
+// Decrypt
+val nonce = blePayload.sliceArray(0 until 24)
+val ct = blePayload.sliceArray(24 until blePayload.size)
+val decrypted = ByteArray(ct.size - 16)
+lazySodium.cryptoAeadXChaCha20Poly1305IetfDecrypt(
+    decrypted, null, null, ct, ct.size.toLong(),
+    null, 0, nonce, sharedKey
+)
+</code></pre>
+<h2>Counter Management</h2>
+<p>See <a href="02-ble-protocol.html">02-ble-protocol.md</a> for counter details. Key points:</p>
+<ul>
+<li><code>writeCounter</code> must be monotonically increasing per session</li>
+<li><code>readCounter</code> validates incoming messages</li>
+<li><code>rebootCounter</code> detects pump restarts — shared key survives reboots</li>
+<li>Counter errors return <code>COUNTER_ERROR</code> (status code 139)</li>
+</ul>
+</article>
+      <footer class="site-footer">
+        <p><strong>Research only.</strong> Not a medical device. Insulin dosing errors can cause severe harm or death.</p>
+        <p>Based on <a href="https://github.com/SandraK82/ypsopump-research">SandraK82/ypsopump-research</a> (MIT). Enhanced fork by <a href="https://github.com/master3395/ypsopump-research">master3395</a>.</p>
+      </footer>
+    </div>
+  </div>
+</body>
+</html>

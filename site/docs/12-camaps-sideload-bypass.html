@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>12 — CamAPS FX Sideload Bypass: Frida-basierter Ansatz (ÜBERHOLT) | YpsoPump Research</title>
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <a href="../index.html">YpsoPump Research</a>
+    <span class="tagline">#WeAreNotWaiting</span>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="Documentation"><h2>Pump and BLE</h2><ul><li><a href="01-hardware.html">01 — hardware</a></li><li><a href="02-ble-protocol.html">02 — ble protocol</a></li><li><a href="03-encryption.html">03 — encryption</a></li><li><a href="04-key-exchange.html">04 — key exchange</a></li></ul><h2>Backend and security</h2><ul><li><a href="05-backend-communication.html">05 — backend communication</a></li><li><a href="06-closed-loop-algorithm.html">06 — closed loop algorithm</a></li><li><a href="07-obfuscation.html">07 — obfuscation</a></li><li><a href="08-security-findings.html">08 — security findings</a></li><li><a href="09-bypass-options.html">09 — bypass options</a></li><li><a href="10-legal-analysis.html">10 — legal analysis</a></li></ul><h2>CamAPS FX</h2><ul><li><a href="11-camaps-algorithm-analysis.html">11 — camaps algorithm analysis</a></li><li><a href="12-camaps-sideload-bypass.html" class="active">12 — camaps sideload bypass</a></li><li><a href="13-play-integrity-bypass-success.html">13 — play integrity bypass success</a></li><li><a href="20-camaps-apk-189-vs-192.html">20 — camaps apk 189 vs 192</a></li><li><a href="21-camaps-liberty-availability.html">21 — camaps liberty availability</a></li><li><a href="22-cgm-error-codes-reference.html">22 — cgm error codes reference</a></li></ul><h2>mylife app</h2><ul><li><a href="14-mylife-app-overview.html">14 — mylife app overview</a></li><li><a href="15-mylife-app-security.html">15 — mylife app security</a></li><li><a href="16-mylife-app-proregia-protocol.html">16 — mylife app proregia protocol</a></li><li><a href="17-mylife-app-components.html">17 — mylife app components</a></li><li><a href="18-mylife-app-bypass-plan.html">18 — mylife app bypass plan</a></li><li><a href="19-key-lifecycle-pump-rotation.html">19 — key lifecycle pump rotation</a></li></ul><h2>Guides</h2><ul><li><a href="../guides/building-a-driver-app.html">building a driver app</a></li><li><a href="../guides/frida-key-extraction.html">frida key extraction</a></li><li><a href="../guides/ble-sniffing-setup.html">ble sniffing setup</a></li></ul><h2>More</h2><ul><li><a href="../index.html">Home</a></li><li><a href="../data/index.html">Data / CSV</a></li><li><a href="https://github.com/master3395/ypsopump-research">GitHub</a></li></ul></nav>
+    <div class="main">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / 12 — CamAPS FX Sideload Bypass: Frida-basierter Ansatz (ÜBERHOLT)</div>
+      
+      <article class="content"><h1>12 — CamAPS FX Sideload Bypass: Frida-basierter Ansatz (ÜBERHOLT)</h1>
+<blockquote>
+<p><strong>HINWEIS</strong>: Dieser Frida-basierte Ansatz ist <strong>überholt</strong>. Der Key Exchange scheiterte an unzureichendem Play Integrity Level. Eine funktionierende Magisk-basierte Lösung (ohne Frida) ist in <a href="13-play-integrity-bypass-success.html">13-play-integrity-bypass-success.md</a> dokumentiert.</p>
+</blockquote>
+<h2>Zusammenfassung</h2>
+<p>Dieses Dokument beschreibt den Versuch, eine sideloaded CamAPS FX APK (von APKPure) auf einem gerooteten Samsung Galaxy A22 5G vollständig funktionsfähig zu machen. Der Bypass umfasst PairIP License Check, Dexcom Error 65, Google Play Integrity und ProBluetooth Key Exchange. <strong>Der Key Exchange schlug fehl</strong> — die Lösung wurde stattdessen über Magisk-Module (TrickyStore + Integrity Box) erreicht.</p>
+<h2>Testumgebung</h2>
+<table>
+<thead>
+<tr>
+<th>Komponente</th>
+<th>Details</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Gerät</strong></td>
+<td>Samsung SM-A226B (Galaxy A22 5G)</td>
+</tr>
+<tr>
+<td><strong>Android</strong></td>
+<td>13 (SDK 33)</td>
+</tr>
+<tr>
+<td><strong>Root</strong></td>
+<td>Magisk 28.1</td>
+</tr>
+<tr>
+<td><strong>PIF</strong></td>
+<td>PlayIntegrityFork v16 (osm0sis &amp; chiteroman)</td>
+</tr>
+<tr>
+<td><strong>PIF-Fingerprint</strong></td>
+<td>Pixel 7a Canary (<code>google/lynx_beta/lynx:CANARY/ZP11.260123.011/14822050:user/release-keys</code>)</td>
+</tr>
+<tr>
+<td><strong>Frida</strong></td>
+<td>17.7.3 (CLI-basiert, NOT Python API!)</td>
+</tr>
+<tr>
+<td><strong>App</strong></td>
+<td><code>com.camdiab.fx_alert.mgdl</code> v1.4(190).111 (APKPure)</td>
+</tr>
+<tr>
+<td><strong>Frida Server</strong></td>
+<td><code>/data/local/tmp/frida-server</code></td>
+</tr>
+</tbody></table>
+<h2>Wichtige technische Erkenntnisse</h2>
+<h3>Frida 17.x CLI-Modus</h3>
+<p>Die Java Bridge funktioniert nur im CLI-Modus (<code>frida -f ... -l script.js</code>), NICHT über die Python API (<code>session.create_script()</code>). Der <code>cat /dev/zero | frida</code> Pattern hält stdin offen für non-interaktive Sessions.</p>
+<h3>jadx Decompilation</h3>
+<p>Der <code>defpackage.</code> Prefix ist ein jadx-Platzhalter. Runtime-Klassennamen haben KEINEN Package-Prefix: <code>Java.use(&quot;getUninterpretedOptionCount&quot;)</code> statt <code>Java.use(&quot;defpackage.getUninterpretedOptionCount&quot;)</code>.</p>
+<h3>Binary Encoding</h3>
+<p><code>extractServiceName.write(byte[])</code> konvertiert zu <strong>UPPERCASE HEX</strong> (<code>&quot;0123456789ABCDEF&quot;</code>). Dies stimmt mit dem ypsomed-pump Repository überein. Keine Base64-Encoding für Proto-Felder.</p>
+<h3>Device ID</h3>
+<p>Die ProRegia Device ID ist eine UUID, gespeichert in <code>SharedPreferences(&quot;proregia_prefs&quot;, &quot;device_id&quot;)</code>. Wird beim ersten Aufruf generiert. Spoofbar via Frida-Hook auf <code>addEntry.read(Context)</code>.</p>
+<h2>Bypass-Layer (V8 — aktuell)</h2>
+<h3>Layer 1-8: PairIP License Check Bypass (GELÖST)</h3>
+<p>8 Klassen in <code>com.pairip.licensecheck.*</code> werden gehookt:</p>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Klasse/Methode</th>
+<th>Aktion</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td><code>LicenseContentProvider.onCreate()</code></td>
+<td>return true</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>LicenseClient.initializeLicenseCheck()</code></td>
+<td>set FULL_CHECK_OK</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>LicenseResponseHelper.validateResponse()</code></td>
+<td>übersprungen</td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>LicenseClient.handleError()</code></td>
+<td>ignoriert</td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>System.exit()</code></td>
+<td>selektiv blockiert (nur PairIP)</td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>LicenseActivity.onStart()</code></td>
+<td>finish()</td>
+</tr>
+<tr>
+<td>7</td>
+<td><code>LicenseClient.performLocalInstallerCheck()</code></td>
+<td>return true</td>
+</tr>
+<tr>
+<td>8</td>
+<td><code>LicenseClient.connectToLicensingService()</code></td>
+<td>blockiert</td>
+</tr>
+</tbody></table>
+<p><strong>Status</strong>: Vollständig gelöst. App startet ohne License Check.</p>
+<h3>Layer 9-10: Dexcom Error 65 Bypass (GELÖST)</h3>
+<p>Error 65 = <code>DX_MSG_RESTART_APP</code> (ordinal 53 in <code>HandleErrorMessage.NotificationCodes</code>).</p>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Klasse/Methode</th>
+<th>Aktion</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>9</td>
+<td><code>getUninterpretedOptionCount.setContentView()</code></td>
+<td>Trigger übersprungen</td>
+</tr>
+<tr>
+<td>10</td>
+<td><code>setAllowAlias.read(NotificationCodes)</code></td>
+<td>ordinal 53 gefiltert</td>
+</tr>
+</tbody></table>
+<p><strong>Status</strong>: Gelöst. Nach <code>pm clear</code> der App-Daten keine Error 65 mehr.</p>
+<h3>Layer 11-13: Google Play Integrity für Dexcom Cloud (GELÖST)</h3>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Klasse/Methode</th>
+<th>Aktion</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>11</td>
+<td><code>getAlgorithmDataBlock.write()</code></td>
+<td>&quot;IntegrityCheckFailed&quot; unterdrückt</td>
+</tr>
+<tr>
+<td>12</td>
+<td><code>SSEResultBase.IconCompatParcelizer(bool)</code></td>
+<td>forced true</td>
+</tr>
+<tr>
+<td>13</td>
+<td>Periodischer Enforcer (10s)</td>
+<td>MediaBrowserCompatItemReceiver = true</td>
+</tr>
+</tbody></table>
+<p><strong>Status</strong>: Gelöst. Dexcom Cloud-Fehler werden abgefangen.</p>
+<h3>Layer 14-18: Key Exchange Diagnostics (AKTIV)</h3>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Zweck</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>14</td>
+<td>ProBluetoothException Trace (alle 3 Konstruktoren + Stack Trace)</td>
+</tr>
+<tr>
+<td>15</td>
+<td>IntegrityServiceException Trace (mit Error Code Mapping)</td>
+</tr>
+<tr>
+<td>16</td>
+<td>Phonesky (Play Store) Detection Trace</td>
+</tr>
+<tr>
+<td>17</td>
+<td>Endpoint.read() — Play Integrity API Call Trace</td>
+</tr>
+<tr>
+<td>18</td>
+<td>Dummy Token Injection bei Play Integrity Failure</td>
+</tr>
+</tbody></table>
+<h3>Layer 19-20: Metrics Spoofing + Request Logging (AKTIV)</h3>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Zweck</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>19</td>
+<td>Metrics.setManufacturer: &quot;samsung&quot; → &quot;Google&quot;, setModel: &quot;SM-A226B&quot; → &quot;Pixel 7a&quot;</td>
+</tr>
+<tr>
+<td>20</td>
+<td>EncryptKeyRequest Logging (alle Feldlängen, Token-Preview)</td>
+</tr>
+</tbody></table>
+<h3>Layer 21-23: Throttle Bypass + Extended Diagnostics (V8 NEU)</h3>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Zweck</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>21</td>
+<td>Device ID Spoofing: Neue UUID bei jedem Start (Throttle-Umgehung)</td>
+</tr>
+<tr>
+<td>22</td>
+<td>Vollständiges Metrics Logging (alle 10 Felder)</td>
+</tr>
+<tr>
+<td>23</td>
+<td>gRPC StatusRuntimeException Logger (Code + Description + Metadata)</td>
+</tr>
+</tbody></table>
+<h2>Bisherige Ergebnisse der Key Exchange Diagnostik</h2>
+<h3>Was funktioniert</h3>
+<ul>
+<li>Phonesky (Play Store) wird erkannt: <strong>GEFUNDEN</strong></li>
+<li>IIntegrityService Binding: <strong>VORHANDEN</strong> (keine IntegrityServiceException)</li>
+<li>Play Integrity Tokens werden generiert (kein Fehler)</li>
+<li>Cloud Project Number: <code>256051217936</code></li>
+<li>Metrics Spoofing wird ausgeführt (Samsung → Pixel 7a im Request)</li>
+</ul>
+<h3>Was NICHT funktioniert</h3>
+<ul>
+<li><strong>EncryptKeyRequest wird vom Server abgelehnt</strong></li>
+<li>Erster Fehler: <code>INVALID_ARGUMENT: Invalid EncryptKeyRequest</code></li>
+<li>Nach mehreren Versuchen: <code>INVALID_ARGUMENT: Device is blocked due to throttling!</code></li>
+<li>BLE-Fehler: <code>Extended Read Failed, Status Code: 136</code> auf Characteristic <code>669a0c20-0008-969e-e211-fcff0000000a</code></li>
+</ul>
+<h3>Analyse des Fehlers</h3>
+<p>Der <code>INVALID_ARGUMENT: Invalid EncryptKeyRequest</code> trat auf, bevor das Gerät gedrosselt wurde. Mögliche Ursachen:</p>
+<ol>
+<li><p><strong>Play Integrity Token Verdict (wahrscheinlichste Ursache)</strong></p>
+<ul>
+<li>Sideloaded APK → <code>appRecognitionVerdict</code> = <code>UNRECOGNIZED_VERSION</code></li>
+<li>Sideloaded APK → <code>appLicensingVerdict</code> = <code>UNLICENSED</code></li>
+<li>PIF spooft <code>deviceRecognitionVerdict</code> korrekt, aber App-Verdict ist unabhängig</li>
+<li>Server validiert Token gegen Google Play Console → Rejection</li>
+</ul>
+</li>
+<li><p><strong>APK-Signatur-Mismatch</strong></p>
+<ul>
+<li>APKPure könnte das APK re-signiert haben</li>
+<li>Play Integrity Token enthält Signing-Certificate SHA256</li>
+<li>Server vergleicht gegen registriertes Certificate → Mismatch</li>
+</ul>
+</li>
+<li><p><strong>Metrics-Mismatch</strong> (weniger wahrscheinlich)</p>
+<ul>
+<li>Bereits adressiert mit Layer 19 → kein Erfolg</li>
+<li>Könnte weitere Felder benötigen (applicationName, packageName)</li>
+</ul>
+</li>
+<li><p><strong>Server-seitige Device-Validierung</strong> (möglich)</p>
+<ul>
+<li>Server kennt registrierte Geräte</li>
+<li>Unbekannte UUID → Rejection</li>
+</ul>
+</li>
+</ol>
+<h2>Offene Fragen</h2>
+<ol>
+<li>Welchen <code>appRecognitionVerdict</code> enthält das Play Integrity Token?</li>
+<li>Hat APKPure das APK re-signiert? (Certificate-Vergleich nötig)</li>
+<li>Existiert ein Relay-Ansatz wie im ypsomed-pump Repository?</li>
+<li>Ist der MITM-Ansatz (kein Cert Pinning!) praktikabel für Token-Analyse?</li>
+</ol>
+<h2>Ergebnis: Frida-Ansatz ÜBERHOLT</h2>
+<p><strong>Der Frida-basierte Bypass ist nicht mehr nötig.</strong> Am 27. Februar 2026 wurde eine rein Magisk-basierte Lösung gefunden, die ohne Frida auskommt und den Key Exchange erfolgreich durchführt.</p>
+<h3>Warum Frida scheiterte</h3>
+<p>Der Frida-Ansatz konnte den Key Exchange nicht erfolgreich abschließen, weil:</p>
+<ol>
+<li><strong>Unzureichendes Play Integrity Level</strong>: PIF v16 allein erreichte nur BASIC_INTEGRITY. Der ProRegia-Server verlangt mindestens DEVICE_INTEGRITY.</li>
+<li><strong>Keine Hardware-Attestation</strong>: Ohne TrickyStore + gültige OEM-Keybox konnte keine Hardware-Attestation simuliert werden.</li>
+<li><strong>Server-seitige Validierung</strong>: Der ProRegia-Server prüft das Play Integrity Token serverseitig und lehnt Anfragen mit unzureichendem Verdict ab (<code>INVALID_ARGUMENT: Invalid EncryptKeyRequest</code>).</li>
+</ol>
+<h3>Funktionierende Alternative</h3>
+<p>Siehe <strong><a href="13-play-integrity-bypass-success.html">13-play-integrity-bypass-success.md</a></strong> für die vollständige Lösung:</p>
+<ul>
+<li><strong>TrickyStore v1.4.1</strong> + <strong>Integrity Box V31</strong> (2 Magisk-Module, kein Frida)</li>
+<li>Ergebnis: <strong>MEETS_STRONG_INTEGRITY</strong> + erfolgreicher ProRegia Key Exchange + Pumpenverbindung</li>
+<li>Stabil, kein App-Crash bei Frida-Disconnect, kein ständiges Script-Management</li>
+</ul>
+<h3>Frida bleibt relevant für</h3>
+<ul>
+<li>Key Extraction (Strategie B aus Dok. 09) — nach erfolgreichem Key Exchange den Shared Key für einen custom AAPS-Driver extrahieren</li>
+<li>Protokollanalyse — BLE-Kommunikation mit der Pumpe mitlesen</li>
+<li>Algorithmus-Reverse-Engineering — Closed-Loop-Algorithmus verstehen</li>
+</ul>
+<h2>Code-Referenz</h2>
+<h3>Obfuskierte Klassennamen (jadx → Runtime)</h3>
+<table>
+<thead>
+<tr>
+<th>jadx Name</th>
+<th>Tatsächliche Funktion</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>MediaDescriptionCompat</code></td>
+<td>gRPC Client (EncryptKey + NonceRequest)</td>
+</tr>
+<tr>
+<td><code>KmsAeadKeyOrBuilder</code></td>
+<td>ProBluetoothGatt (BLE + Key Exchange)</td>
+</tr>
+<tr>
+<td><code>extractServiceName</code></td>
+<td>Hex-Encoding Utility</td>
+</tr>
+<tr>
+<td><code>addEntry</code></td>
+<td>Device ID Provider (UUID aus SharedPrefs)</td>
+</tr>
+<tr>
+<td><code>Endpoint</code></td>
+<td>Play Integrity API Orchestrator</td>
+</tr>
+<tr>
+<td><code>getFeatures</code></td>
+<td>Phonesky (Play Store) Detection</td>
+</tr>
+<tr>
+<td><code>clearExemplars</code></td>
+<td>Future/Promise Wrapper (30s Timeout)</td>
+</tr>
+<tr>
+<td><code>getPagesOrBuilderList</code></td>
+<td>Play Integrity Token Result (abstract)</td>
+</tr>
+<tr>
+<td><code>clearAliases</code></td>
+<td>IntegrityTokenRequest Builder</td>
+</tr>
+<tr>
+<td><code>addFeaturesBytes</code></td>
+<td>IntegrityTokenRequest DTO</td>
+</tr>
+<tr>
+<td><code>getUninterpretedOptionCount</code></td>
+<td>Dexcom Error 65 Trigger</td>
+</tr>
+<tr>
+<td><code>setAllowAlias</code></td>
+<td>Dexcom Error Dispatch</td>
+</tr>
+<tr>
+<td><code>getAlgorithmDataBlock</code></td>
+<td>Dexcom Cloud Error Handler</td>
+</tr>
+<tr>
+<td><code>SSEResultBase</code></td>
+<td>Dexcom Integrity Flag</td>
+</tr>
+<tr>
+<td><code>KmsEnvelopeAeadKeyBuilder</code></td>
+<td>ProBluetooth Configuration</td>
+</tr>
+<tr>
+<td><code>KmsEnvelopeAeadKeyFormat</code></td>
+<td>BLE GATT Helper</td>
+</tr>
+<tr>
+<td><code>setAppVersion</code></td>
+<td>ProBluetooth Manager</td>
+</tr>
+</tbody></table>
+<h3>ProRegia Server Endpunkte</h3>
+<table>
+<thead>
+<tr>
+<th>App</th>
+<th>Server</th>
+<th>Port</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>CamAPS FX</td>
+<td><code>connect.cam.pr.sec01.proregia.io</code></td>
+<td>443</td>
+</tr>
+<tr>
+<td>mylife App</td>
+<td><code>connect.ml.pr.sec01.proregia.io</code></td>
+<td>8090</td>
+</tr>
+</tbody></table>
+<h3>Launcher Script</h3>
+<pre><code class="language-bash">#!/bin/bash
+# launcher.sh — Auto-respawning Frida launcher
+SCRIPT=&quot;bypass_pairip.js&quot;
+PKG=&quot;com.camdiab.fx_alert.mgdl&quot;
+
+while true; do
+    echo &quot;[$(date +%H:%M:%S)] Starte CamAPS FX mit Bypass...&quot;
+    cat /dev/zero | frida -U -f &quot;$PKG&quot; -l &quot;$SCRIPT&quot; 2&gt;&amp;1
+    echo &quot;[$(date +%H:%M:%S)] Frida beendet (exit=$?), re-spawne in 3s...&quot;
+    sleep 3
+done
+</code></pre>
+</article>
+      <footer class="site-footer">
+        <p><strong>Research only.</strong> Not a medical device. Insulin dosing errors can cause severe harm or death.</p>
+        <p>Based on <a href="https://github.com/SandraK82/ypsopump-research">SandraK82/ypsopump-research</a> (MIT). Enhanced fork by <a href="https://github.com/master3395/ypsopump-research">master3395</a>.</p>
+      </footer>
+    </div>
+  </div>
+</body>
+</html>

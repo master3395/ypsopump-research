@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Frida Key Extraction Guide | YpsoPump Research</title>
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <a href="../index.html">YpsoPump Research</a>
+    <span class="tagline">#WeAreNotWaiting</span>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="Documentation"><h2>Pump and BLE</h2><ul><li><a href="../docs/01-hardware.html">01 — hardware</a></li><li><a href="../docs/02-ble-protocol.html">02 — ble protocol</a></li><li><a href="../docs/03-encryption.html">03 — encryption</a></li><li><a href="../docs/04-key-exchange.html">04 — key exchange</a></li></ul><h2>Backend and security</h2><ul><li><a href="../docs/05-backend-communication.html">05 — backend communication</a></li><li><a href="../docs/06-closed-loop-algorithm.html">06 — closed loop algorithm</a></li><li><a href="../docs/07-obfuscation.html">07 — obfuscation</a></li><li><a href="../docs/08-security-findings.html">08 — security findings</a></li><li><a href="../docs/09-bypass-options.html">09 — bypass options</a></li><li><a href="../docs/10-legal-analysis.html">10 — legal analysis</a></li></ul><h2>CamAPS FX</h2><ul><li><a href="../docs/11-camaps-algorithm-analysis.html">11 — camaps algorithm analysis</a></li><li><a href="../docs/12-camaps-sideload-bypass.html">12 — camaps sideload bypass</a></li><li><a href="../docs/13-play-integrity-bypass-success.html">13 — play integrity bypass success</a></li><li><a href="../docs/20-camaps-apk-189-vs-192.html">20 — camaps apk 189 vs 192</a></li><li><a href="../docs/21-camaps-liberty-availability.html">21 — camaps liberty availability</a></li><li><a href="../docs/22-cgm-error-codes-reference.html">22 — cgm error codes reference</a></li></ul><h2>mylife app</h2><ul><li><a href="../docs/14-mylife-app-overview.html">14 — mylife app overview</a></li><li><a href="../docs/15-mylife-app-security.html">15 — mylife app security</a></li><li><a href="../docs/16-mylife-app-proregia-protocol.html">16 — mylife app proregia protocol</a></li><li><a href="../docs/17-mylife-app-components.html">17 — mylife app components</a></li><li><a href="../docs/18-mylife-app-bypass-plan.html">18 — mylife app bypass plan</a></li><li><a href="../docs/19-key-lifecycle-pump-rotation.html">19 — key lifecycle pump rotation</a></li></ul><h2>Guides</h2><ul><li><a href="building-a-driver-app.html">building a driver app</a></li><li><a href="frida-key-extraction.html" class="active">frida key extraction</a></li><li><a href="ble-sniffing-setup.html">ble sniffing setup</a></li></ul><h2>More</h2><ul><li><a href="../index.html">Home</a></li><li><a href="../data/index.html">Data / CSV</a></li><li><a href="https://github.com/master3395/ypsopump-research">GitHub</a></li></ul></nav>
+    <div class="main">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / Frida Key Extraction Guide</div>
+      
+      <article class="content"><h1>Frida Key Extraction Guide</h1>
+<h2>Overview</h2>
+<p>This guide provides Frida scripts for extracting YpsoPump BLE encryption keys from the CamAPS FX app. Three extraction methods are described:</p>
+<ol>
+<li><strong>Hook <code>write.b()</code></strong> — capture shared key during computation</li>
+<li><strong>Hook EncryptedSharedPreferences</strong> — read stored keys</li>
+<li><strong>Pump Faking</strong> — fake a virtual pump to hijack CamAPS key exchange</li>
+</ol>
+<h2>Prerequisites</h2>
+<ul>
+<li><strong>Rooted Android phone</strong> (Magisk recommended)</li>
+<li><strong>Frida</strong> installed on phone and computer:<pre><code class="language-bash">pip install frida-tools
+# Push frida-server to phone
+adb push frida-server-16.x.x-android-arm64 /data/local/tmp/frida-server
+adb shell &quot;chmod 755 /data/local/tmp/frida-server&quot;
+adb shell &quot;su -c /data/local/tmp/frida-server &amp;&quot;
+</code></pre>
+</li>
+<li><strong>CamAPS FX</strong> installed and logged in</li>
+<li><strong>YpsoPump</strong> paired (for methods 1 &amp; 2)</li>
+</ul>
+<h2>Bypassing Anti-Frida Detection</h2>
+<p>CamAPS uses <code>libe61d.so</code> for anti-Frida detection. You may need to:</p>
+<h3>Option 1: Frida Gadget (Inject at startup)</h3>
+<pre><code class="language-bash"># Patch APK with Frida gadget (avoids runtime detection)
+objection patchapk -s com.camdiab.fx_alert.mgdl.apk
+</code></pre>
+<h3>Option 2: Early Hook (Before libe61d.so loads)</h3>
+<pre><code class="language-javascript">// frida-bypass-antidebug.js
+// Hook before libe61d.so initializes
+Interceptor.attach(Module.findExportByName(null, &quot;android_dlopen_ext&quot;), {
+    onEnter: function(args) {
+        var path = args[0].readUtf8String();
+        if (path &amp;&amp; path.includes(&quot;libe61d&quot;)) {
+            console.log(&quot;[*] Blocking libe61d.so load: &quot; + path);
+            // Replace with empty lib or patch JNI_OnLoad
+            args[0] = Memory.allocUtf8String(&quot;/dev/null&quot;);
+        }
+    }
+});
+</code></pre>
+<h3>Option 3: MagiskHide / Zygisk</h3>
+<p>Configure Magisk to hide root from CamAPS FX specifically.</p>
+<h2>Method 1: Hook <code>write.b()</code> — Shared Key Computation</h2>
+<p>The obfuscated class <code>write</code> contains method <code>b(byte[])</code> which computes the shared key from the pump&#39;s public key.</p>
+<pre><code class="language-javascript">// frida-capture-sharedkey.js
+// Hook the shared key computation in write.b()
+
+Java.perform(function() {
+    console.log(&quot;[*] YpsoPump Key Extraction - Method 1: write.b() hook&quot;);
+
+    var writeClass = Java.use(&quot;write&quot;);
+
+    // write.b(byte[]) = shared key computation
+    // crypto_scalarmult(appPrivKey, pumpPubKey) → crypto_core_hchacha20()
+    writeClass.b.overload(&quot;[B&quot;).implementation = function(pumpPublicKey) {
+        console.log(&quot;\n[!!!] SHARED KEY COMPUTATION TRIGGERED [!!!]&quot;);
+        console.log(&quot;[*] Pump Public Key (&quot; + pumpPublicKey.length + &quot; bytes):&quot;);
+        console.log(&quot;    &quot; + bytesToHex(pumpPublicKey));
+
+        // Call original method
+        var result = this.b(pumpPublicKey);
+
+        // The result or internal fields now contain the shared key
+        console.log(&quot;[*] Method returned: &quot; + (result ? bytesToHex(result) : &quot;null&quot;));
+
+        // Try to read internal fields for the derived shared key
+        try {
+            var fields = writeClass.class.getDeclaredFields();
+            fields.forEach(function(field) {
+                field.setAccessible(true);
+                var val = field.get(null); // static fields
+                if (val &amp;&amp; val.getClass &amp;&amp; val.getClass().getName() === &quot;[B&quot;) {
+                    var arr = Java.array(&quot;byte&quot;, val);
+                    if (arr.length === 32) {
+                        console.log(&quot;[*] Potential key field &#39;&quot; + field.getName() +
+                                    &quot;&#39;: &quot; + bytesToHex(arr));
+                    }
+                }
+            });
+        } catch(e) {
+            console.log(&quot;[*] Field enumeration: &quot; + e);
+        }
+
+        return result;
+    };
+
+    // Also hook crypto_scalarmult for raw ECDH output
+    try {
+        var Sodium = Java.use(&quot;com.goterl.lazysodium.Sodium&quot;);
+        Sodium.crypto_scalarmult.implementation = function(q, n, p) {
+            var ret = this.crypto_scalarmult(q, n, p);
+            console.log(&quot;\n[*] crypto_scalarmult() called!&quot;);
+            console.log(&quot;    App Private Key: &quot; + bytesToHex(n));
+            console.log(&quot;    Pump Public Key: &quot; + bytesToHex(p));
+            console.log(&quot;    Raw Shared Secret: &quot; + bytesToHex(q));
+            return ret;
+        };
+
+        Sodium.crypto_core_hchacha20.implementation = function(out, inp, k, c) {
+            var ret = this.crypto_core_hchacha20(out, inp, k, c);
+            console.log(&quot;\n[*] crypto_core_hchacha20() = Key Derivation&quot;);
+            console.log(&quot;    Derived Shared Key: &quot; + bytesToHex(out));
+            return ret;
+        };
+    } catch(e) {
+        console.log(&quot;[*] Sodium hooks: &quot; + e);
+    }
+});
+
+// Helper function
+function bytesToHex(bytes) {
+    var hex = [];
+    for (var i = 0; i &lt; bytes.length; i++) {
+        hex.push((&#39;0&#39; + (bytes[i] &amp; 0xFF).toString(16)).slice(-2));
+    }
+    return hex.join(&#39;&#39;);
+}
+</code></pre>
+<h3>Usage</h3>
+<pre><code class="language-bash">frida -U -l frida-capture-sharedkey.js com.camdiab.fx_alert.mgdl
+</code></pre>
+<p>Then trigger a key exchange in CamAPS (pair a pump or wait for key renewal).</p>
+<h2>Method 2: Hook EncryptedSharedPreferences</h2>
+<p>Read stored keys from the encrypted preferences file.</p>
+<pre><code class="language-javascript">// frida-read-stored-keys.js
+
+Java.perform(function() {
+    console.log(&quot;[*] YpsoPump Key Extraction - Method 2: EncryptedSharedPreferences&quot;);
+
+    // Hook SharedPreferences.getString
+    var SharedPreferencesImpl = Java.use(&quot;android.app.SharedPreferencesImpl&quot;);
+    SharedPreferencesImpl.getString.implementation = function(key, defValue) {
+        var result = this.getString(key, defValue);
+
+        // Watch for key-related preference reads
+        var interestingKeys = [
+            &quot;sharedKey&quot;, &quot;privateKey&quot;, &quot;publicKey&quot;,
+            &quot;pumpPublicKey&quot;, &quot;pumpPublicKeyDate&quot;, &quot;sharedKeyDate&quot;,
+            &quot;numericWriteCounter&quot;, &quot;numericReadCounter&quot;, &quot;rebootCounter&quot;
+        ];
+
+        if (interestingKeys.indexOf(key) !== -1) {
+            console.log(&quot;\n[*] SharedPreferences.getString(&#39;&quot; + key + &quot;&#39;)&quot;);
+            if (result) {
+                console.log(&quot;    Value: &quot; + result.substring(0, Math.min(result.length, 200)));
+                if (key.indexOf(&quot;Key&quot;) !== -1 &amp;&amp; key !== &quot;sharedKeyDate&quot; &amp;&amp; key !== &quot;pumpPublicKeyDate&quot;) {
+                    // Try to decode as Base64
+                    try {
+                        var Base64 = Java.use(&quot;android.util.Base64&quot;);
+                        var decoded = Base64.decode(result, 0);
+                        console.log(&quot;    Decoded (&quot; + decoded.length + &quot; bytes): &quot; + bytesToHex(decoded));
+                    } catch(e) {}
+                }
+            }
+        }
+
+        return result;
+    };
+
+    // Also hook byte array reads from Tink AEAD
+    try {
+        var AesGcm = Java.use(&quot;com.google.crypto.tink.aead.internal.InsecureNonceAesGcmJce&quot;);
+        AesGcm.decrypt.implementation = function(nonce, ciphertext, aad) {
+            var plaintext = this.decrypt(nonce, ciphertext, aad);
+            if (plaintext.length === 32) {
+                console.log(&quot;\n[*] Tink AES-GCM decrypt → 32-byte key!&quot;);
+                console.log(&quot;    Decrypted: &quot; + bytesToHex(plaintext));
+            }
+            return plaintext;
+        };
+    } catch(e) {
+        console.log(&quot;[*] Tink hook: &quot; + e);
+    }
+});
+
+function bytesToHex(bytes) {
+    var hex = [];
+    for (var i = 0; i &lt; bytes.length; i++) {
+        hex.push((&#39;0&#39; + (bytes[i] &amp; 0xFF).toString(16)).slice(-2));
+    }
+    return hex.join(&#39;&#39;);
+}
+</code></pre>
+<h3>Usage</h3>
+<pre><code class="language-bash">frida -U -l frida-read-stored-keys.js com.camdiab.fx_alert.mgdl
+</code></pre>
+<p>Open CamAPS and let it connect to the pump. The keys will be logged as they are read from storage.</p>
+<h2>Method 3: Pump Faking (CamAPS Key Exchange Hijack)</h2>
+<p>This is the most powerful approach: create a fake BLE peripheral that pretends to be a YpsoPump, let CamAPS perform the key exchange, and capture everything.</p>
+<h3>Step 1: Capture Real Pump&#39;s Challenge + Public Key</h3>
+<p>First, connect to the real pump and read its static public key:</p>
+<pre><code class="language-javascript">// frida-capture-pump-identity.js
+
+Java.perform(function() {
+    // Hook BLE reads to capture the 64-byte challenge+pubkey
+    var BluetoothGatt = Java.use(&quot;android.bluetooth.BluetoothGatt&quot;);
+    BluetoothGatt.readCharacteristic.implementation = function(char) {
+        var ret = this.readCharacteristic(char);
+        return ret;
+    };
+
+    // Hook the callback where the 64 bytes arrive
+    var GattCallback = Java.use(&quot;android.bluetooth.BluetoothGattCallback&quot;);
+    // Note: actual class is obfuscated, look for onCharacteristicRead
+});
+</code></pre>
+<h3>Step 2: Create Fake BLE Peripheral</h3>
+<p>Use a second Android phone or nRF52 dev board:</p>
+<pre><code class="language-kotlin">// FakePumpPeripheral.kt (separate Android app)
+
+class FakePumpPeripheral(private val context: Context) {
+    private val bluetoothManager = context.getSystemService(BluetoothManager::class.java)
+    private val advertiser = bluetoothManager.adapter.bluetoothLeAdvertiser
+
+    // Real pump&#39;s public key (extracted from Step 1)
+    private val pumpPublicKey: ByteArray = /* 32 bytes */
+    // Fresh random challenge
+    private val challenge: ByteArray = SecureRandom().let {
+        ByteArray(32).also { bytes -&gt; it.nextBytes(bytes) }
+    }
+
+    fun startAdvertising() {
+        val settings = AdvertiseSettings.Builder()
+            .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
+            .setConnectable(true)
+            .build()
+
+        val data = AdvertiseData.Builder()
+            .addServiceUuid(ParcelUuid.fromString(&quot;669a0c20-0008-969e-e211-ffffffffffff&quot;))
+            .setIncludeDeviceName(true)
+            .build()
+
+        // Set device name to match real pump
+        bluetoothManager.adapter.setName(&quot;mylife YpsoPump XXXXXX&quot;)
+
+        advertiser.startAdvertising(settings, data, advertiseCallback)
+        openGattServer()
+    }
+
+    private fun openGattServer() {
+        val server = bluetoothManager.openGattServer(context, gattServerCallback)
+
+        // Add service with key exchange characteristic
+        val service = BluetoothGattService(
+            UUID.fromString(&quot;669a0c20-0008-969e-e211-eeeeeeeeeeee&quot;),
+            BluetoothGattService.SERVICE_TYPE_PRIMARY
+        )
+
+        // Key exchange characteristic (read: 64B challenge+pubkey, write: 116B payload)
+        val keyExchangeChar = BluetoothGattCharacteristic(
+            KEY_EXCHANGE_UUID,
+            BluetoothGattCharacteristic.PROPERTY_READ or
+            BluetoothGattCharacteristic.PROPERTY_WRITE,
+            BluetoothGattCharacteristic.PERMISSION_READ or
+            BluetoothGattCharacteristic.PERMISSION_WRITE
+        )
+        service.addCharacteristic(keyExchangeChar)
+        server.addService(service)
+    }
+
+    private val gattServerCallback = object : BluetoothGattServerCallback() {
+        override fun onCharacteristicReadRequest(
+            device: BluetoothDevice, requestId: Int, offset: Int,
+            characteristic: BluetoothGattCharacteristic
+        ) {
+            if (characteristic.uuid == KEY_EXCHANGE_UUID) {
+                // Return challenge (32B) + pump public key (32B)
+                val response = challenge + pumpPublicKey
+                server.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, response)
+                Log.d(&quot;FakePump&quot;, &quot;Sent challenge + public key (64 bytes)&quot;)
+            }
+        }
+
+        override fun onCharacteristicWriteRequest(
+            device: BluetoothDevice, requestId: Int,
+            characteristic: BluetoothGattCharacteristic,
+            preparedWrite: Boolean, responseNeeded: Boolean,
+            offset: Int, value: ByteArray
+        ) {
+            if (characteristic.uuid == KEY_EXCHANGE_UUID &amp;&amp; value.size == 116) {
+                Log.d(&quot;FakePump&quot;, &quot;CAPTURED 116-BYTE PAYLOAD!&quot;)
+                Log.d(&quot;FakePump&quot;, value.toHexString())
+
+                // Save the 116 bytes — this is the key exchange payload
+                save116BytePayload(value)
+
+                // Now relay this to the REAL pump from the custom driver app
+
+                if (responseNeeded) {
+                    server.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
+                }
+            }
+        }
+    }
+}
+</code></pre>
+<h3>Step 3: Relay to Real Pump</h3>
+<p>After capturing the 116 bytes:</p>
+<ol>
+<li>Stop the fake peripheral</li>
+<li>Connect your custom driver to the real pump</li>
+<li>Write the 116 bytes to the real pump&#39;s key exchange characteristic</li>
+<li>Compute shared key locally (same as CamAPS would)</li>
+</ol>
+<h3>Step 4: Hook CamAPS for Shared Key</h3>
+<p>While CamAPS is communicating with the fake pump, also hook the shared key computation:</p>
+<pre><code class="language-javascript">// Combined hook: capture shared key + 116-byte payload
+Java.perform(function() {
+    // Hook writeCharacteristic to catch the 116-byte write
+    var BluetoothGattCharacteristic = Java.use(&quot;android.bluetooth.BluetoothGattCharacteristic&quot;);
+    BluetoothGattCharacteristic.getValue.implementation = function() {
+        var value = this.getValue();
+        if (value &amp;&amp; value.length === 116) {
+            console.log(&quot;[!!!] 116-byte key exchange payload!&quot;);
+            console.log(&quot;    &quot; + bytesToHex(value));
+            // Save to file
+            var File = Java.use(&quot;java.io.File&quot;);
+            var FileOutputStream = Java.use(&quot;java.io.FileOutputStream&quot;);
+            var f = FileOutputStream.$new(&quot;/sdcard/ypso_116bytes.bin&quot;);
+            f.write(value);
+            f.close();
+            console.log(&quot;[*] Saved to /sdcard/ypso_116bytes.bin&quot;);
+        }
+        return value;
+    };
+
+    // Hook shared key computation
+    var Sodium = Java.use(&quot;com.goterl.lazysodium.Sodium&quot;);
+    Sodium.crypto_core_hchacha20.implementation = function(out, inp, k, c) {
+        var ret = this.crypto_core_hchacha20(out, inp, k, c);
+        console.log(&quot;[!!!] SHARED KEY DERIVED: &quot; + bytesToHex(out));
+        // Save to file
+        var f = Java.use(&quot;java.io.FileOutputStream&quot;).$new(&quot;/sdcard/ypso_sharedkey.bin&quot;);
+        f.write(out);
+        f.close();
+        console.log(&quot;[*] Saved to /sdcard/ypso_sharedkey.bin&quot;);
+        return ret;
+    };
+});
+</code></pre>
+<h2>Output Summary</h2>
+<p>After successful extraction you have:</p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Content</th>
+<th>Size</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>ypso_sharedkey.bin</code></td>
+<td>XChaCha20-Poly1305 shared key</td>
+<td>32 bytes</td>
+</tr>
+<tr>
+<td><code>ypso_116bytes.bin</code></td>
+<td>Key exchange payload (for relay)</td>
+<td>116 bytes</td>
+</tr>
+<tr>
+<td>Console log</td>
+<td>App private key, pump public key</td>
+<td>32 bytes each</td>
+</tr>
+</tbody></table>
+<h2>Extending Key Lifetime</h2>
+<p>The 28-day expiry is app-side only. To extend:</p>
+<pre><code class="language-javascript">// Patch the calendar check in key expiry verification
+Java.perform(function() {
+    var Calendar = Java.use(&quot;java.util.Calendar&quot;);
+    Calendar.after.implementation = function(other) {
+        // Check if this is the key expiry check (adds 28 days)
+        var stack = Java.use(&quot;java.lang.Thread&quot;).currentThread().getStackTrace();
+        for (var i = 0; i &lt; stack.length; i++) {
+            if (stack[i].toString().indexOf(&quot;write&quot;) !== -1 ||
+                stack[i].toString().indexOf(&quot;KmsAeadKeyOrBuilder&quot;) !== -1) {
+                console.log(&quot;[*] Key expiry check bypassed!&quot;);
+                return false; // Key never expires
+            }
+        }
+        return this.after(other);
+    };
+});
+</code></pre>
+<h2>Safety Notes</h2>
+<ol>
+<li><strong>Test thoroughly</strong> before relying on extracted keys for insulin delivery</li>
+<li><strong>Monitor pump responses</strong> — error code 134 (INVALID_SHARED_KEY) means keys are wrong</li>
+<li><strong>Keep CamAPS as fallback</strong> — always have a way back to the official app</li>
+<li><strong>Document your keys</strong> — save hex dumps, timestamps, and pump serial number</li>
+</ol>
+</article>
+      <footer class="site-footer">
+        <p><strong>Research only.</strong> Not a medical device. Insulin dosing errors can cause severe harm or death.</p>
+        <p>Based on <a href="https://github.com/SandraK82/ypsopump-research">SandraK82/ypsopump-research</a> (MIT). Enhanced fork by <a href="https://github.com/master3395/ypsopump-research">master3395</a>.</p>
+      </footer>
+    </div>
+  </div>
+</body>
+</html>

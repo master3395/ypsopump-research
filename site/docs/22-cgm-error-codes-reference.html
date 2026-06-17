@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>22 — CGM error codes in CamAPS FX (build 192) | YpsoPump Research</title>
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <a href="../index.html">YpsoPump Research</a>
+    <span class="tagline">#WeAreNotWaiting</span>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="Documentation"><h2>Pump and BLE</h2><ul><li><a href="01-hardware.html">01 — hardware</a></li><li><a href="02-ble-protocol.html">02 — ble protocol</a></li><li><a href="03-encryption.html">03 — encryption</a></li><li><a href="04-key-exchange.html">04 — key exchange</a></li></ul><h2>Backend and security</h2><ul><li><a href="05-backend-communication.html">05 — backend communication</a></li><li><a href="06-closed-loop-algorithm.html">06 — closed loop algorithm</a></li><li><a href="07-obfuscation.html">07 — obfuscation</a></li><li><a href="08-security-findings.html">08 — security findings</a></li><li><a href="09-bypass-options.html">09 — bypass options</a></li><li><a href="10-legal-analysis.html">10 — legal analysis</a></li></ul><h2>CamAPS FX</h2><ul><li><a href="11-camaps-algorithm-analysis.html">11 — camaps algorithm analysis</a></li><li><a href="12-camaps-sideload-bypass.html">12 — camaps sideload bypass</a></li><li><a href="13-play-integrity-bypass-success.html">13 — play integrity bypass success</a></li><li><a href="20-camaps-apk-189-vs-192.html">20 — camaps apk 189 vs 192</a></li><li><a href="21-camaps-liberty-availability.html">21 — camaps liberty availability</a></li><li><a href="22-cgm-error-codes-reference.html" class="active">22 — cgm error codes reference</a></li></ul><h2>mylife app</h2><ul><li><a href="14-mylife-app-overview.html">14 — mylife app overview</a></li><li><a href="15-mylife-app-security.html">15 — mylife app security</a></li><li><a href="16-mylife-app-proregia-protocol.html">16 — mylife app proregia protocol</a></li><li><a href="17-mylife-app-components.html">17 — mylife app components</a></li><li><a href="18-mylife-app-bypass-plan.html">18 — mylife app bypass plan</a></li><li><a href="19-key-lifecycle-pump-rotation.html">19 — key lifecycle pump rotation</a></li></ul><h2>Guides</h2><ul><li><a href="../guides/building-a-driver-app.html">building a driver app</a></li><li><a href="../guides/frida-key-extraction.html">frida key extraction</a></li><li><a href="../guides/ble-sniffing-setup.html">ble sniffing setup</a></li></ul><h2>More</h2><ul><li><a href="../index.html">Home</a></li><li><a href="../data/index.html">Data / CSV</a></li><li><a href="https://github.com/master3395/ypsopump-research">GitHub</a></li></ul><h2>On this page</h2><ul class="toc"><li><a href="#important-camaps-codes-vs-librelink-codes">Important: CamAPS codes vs LibreLink codes</a></li><li><a href="#two-layers-in-the-apk">Two layers in the APK</a></li><li><a href="#summary-by-cgm-type-build-192">Summary by CGM type (build 192)</a></li><li><a href="#dexcom-g7-user-facing-codes-192-only" style="padding-left:1.25rem">Dexcom G7 user-facing codes (192 only)</a></li><li><a href="#freestyle-libre-3-user-facing-codes-both-builds" style="padding-left:1.25rem">FreeStyle Libre 3 user-facing codes (both builds)</a></li><li><a href="#sample-rows-user-facing">Sample rows (user-facing)</a></li><li><a href="#regenerating-the-csv-files">Regenerating the CSV files</a></li><li><a href="#see-also">See also</a></li></ul></nav>
+    <div class="main">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / 22 — CGM error codes in CamAPS FX (build 192)</div>
+      
+      <article class="content"><h1>22 — CGM error codes in CamAPS FX (build 192)</h1>
+<blockquote>
+<p><strong>Document 22</strong> | master3395 fork addition | Build: <strong>1.4(192).101</strong><br>Data: <a href="../data/cgm-error-codes-192.csv"><code>data/cgm-error-codes-192.csv</code></a>, <a href="../data/cgm-notification-enums-192.csv"><code>data/cgm-notification-enums-192.csv</code></a><br>Related: <a href="20-camaps-apk-189-vs-192.html">20 — APK 189 vs 192</a></p>
+</blockquote>
+<h2>Important: CamAPS codes vs LibreLink codes</h2>
+<p>CamAPS FX shows <strong>short support IDs</strong> such as <code>LBR012</code>, <code>DDC045</code>, or <code>DG7X023</code>. These are <strong>not</strong> the same as numeric codes in the standalone <strong>Abbott LibreLink</strong> app (for example 373, 335, 410).</p>
+<p>If support asks for a CamAPS error code, quote the <strong>letter prefix ID</strong> from the alert, not LibreLink numbers from a different app.</p>
+<h2>Two layers in the APK</h2>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Examples</th>
+<th>Where defined</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>User-facing support codes</strong></td>
+<td><code>LBR###</code>, <code>DDC###</code>, <code>DCI###</code>, <code>DG7X###</code></td>
+<td><code>strings.xml</code> (shown in alerts)</td>
+</tr>
+<tr>
+<td><strong>Internal notification enums</strong></td>
+<td><code>LS3_*</code>, <code>DX_*</code>, etc.</td>
+<td>Java/Kotlin alert handlers</td>
+</tr>
+</tbody></table>
+<p>Full machine-readable lists:</p>
+<ul>
+<li><a href="../data/cgm-error-codes-192.csv">cgm-error-codes-192.csv</a> (206 user-facing rows)</li>
+<li><a href="../data/cgm-notification-enums-192.csv">cgm-notification-enums-192.csv</a> (147 internal enums)</li>
+</ul>
+<h2>Summary by CGM type (build 192)</h2>
+<table>
+<thead>
+<tr>
+<th>CGM</th>
+<th>User-facing prefix</th>
+<th>Count in 192</th>
+<th>189 vs 192</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>FreeStyle Libre 3</td>
+<td><code>LBR###</code></td>
+<td>25 (<code>LBR001</code>–<code>LBR025</code>)</td>
+<td>Same in 189 and 192</td>
+</tr>
+<tr>
+<td>Dexcom G6</td>
+<td><code>DCI###</code></td>
+<td>25+</td>
+<td>Same in 189 and 192</td>
+</tr>
+<tr>
+<td>Dexcom G6 (alt)</td>
+<td><code>DDC###</code></td>
+<td>varies</td>
+<td>Same in 189 and 192</td>
+</tr>
+<tr>
+<td>Dexcom G7</td>
+<td><code>DG7X###</code></td>
+<td>18 codes</td>
+<td><strong>192 only</strong> (G7 stack absent in 189)</td>
+</tr>
+</tbody></table>
+<h3>Dexcom G7 user-facing codes (192 only)</h3>
+<p><code>DG7X001</code>, <code>DG7X002</code>, <code>DG7X003</code>, <code>DG7X023</code>, <code>DG7X024</code>, <code>DG7X025</code>, <code>DG7X026</code>, <code>DG7X027</code>, <code>DG7X028</code>, <code>DG7X029</code>, <code>DG7X030</code>, <code>DG7X031</code>, <code>DG7X032</code>, <code>DG7X033</code>, <code>DG7X034</code>, <code>DG7X037</code>, <code>DG7X038</code>, <code>DG7X041</code>.</p>
+<h3>FreeStyle Libre 3 user-facing codes (both builds)</h3>
+<p><code>LBR001</code> through <code>LBR025</code>. Most messages follow the pattern: <em>&quot;Internal error LBRnnn. Restart your smart device.&quot;</em></p>
+<h2>Sample rows (user-facing)</h2>
+<table>
+<thead>
+<tr>
+<th>CGM</th>
+<th>Code</th>
+<th>Message (excerpt)</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Dexcom G6 (DCI)</td>
+<td>DCI001</td>
+<td>Internal error DCI001. Restart your smart device.</td>
+</tr>
+<tr>
+<td>Dexcom G6 (DDC)</td>
+<td>DDC045</td>
+<td>(see CSV for full text)</td>
+</tr>
+<tr>
+<td>Libre 3</td>
+<td>LBR012</td>
+<td>Internal error LBR012. Restart your smart device.</td>
+</tr>
+<tr>
+<td>Dexcom G7</td>
+<td>DG7X023</td>
+<td>(see CSV; 192 only)</td>
+</tr>
+</tbody></table>
+<h2>Regenerating the CSV files</h2>
+<p>If you decompile a newer CamAPS build locally, adapt the extractor from the <a href="../CHANGELOG.html">master3395 fork CHANGELOG</a> or the original CamAPS backup tooling. Do not commit APK binaries or smali trees to this repository.</p>
+<h2>See also</h2>
+<ul>
+<li><a href="20-camaps-apk-189-vs-192.html">20 — CamAPS APK 189 vs 192</a>: full tables and CGM section</li>
+<li><a href="11-camaps-algorithm-analysis.html">11 — CamAPS algorithm analysis</a>: upstream analysis on build 190</li>
+</ul>
+</article>
+      <footer class="site-footer">
+        <p><strong>Research only.</strong> Not a medical device. Insulin dosing errors can cause severe harm or death.</p>
+        <p>Based on <a href="https://github.com/SandraK82/ypsopump-research">SandraK82/ypsopump-research</a> (MIT). Enhanced fork by <a href="https://github.com/master3395/ypsopump-research">master3395</a>.</p>
+      </footer>
+    </div>
+  </div>
+</body>
+</html>

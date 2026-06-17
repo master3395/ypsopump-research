@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>16 — mylife App: ProRegia Protokoll &amp; Key Exchange | YpsoPump Research</title>
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <a href="../index.html">YpsoPump Research</a>
+    <span class="tagline">#WeAreNotWaiting</span>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="Documentation"><h2>Pump and BLE</h2><ul><li><a href="01-hardware.html">01 — hardware</a></li><li><a href="02-ble-protocol.html">02 — ble protocol</a></li><li><a href="03-encryption.html">03 — encryption</a></li><li><a href="04-key-exchange.html">04 — key exchange</a></li></ul><h2>Backend and security</h2><ul><li><a href="05-backend-communication.html">05 — backend communication</a></li><li><a href="06-closed-loop-algorithm.html">06 — closed loop algorithm</a></li><li><a href="07-obfuscation.html">07 — obfuscation</a></li><li><a href="08-security-findings.html">08 — security findings</a></li><li><a href="09-bypass-options.html">09 — bypass options</a></li><li><a href="10-legal-analysis.html">10 — legal analysis</a></li></ul><h2>CamAPS FX</h2><ul><li><a href="11-camaps-algorithm-analysis.html">11 — camaps algorithm analysis</a></li><li><a href="12-camaps-sideload-bypass.html">12 — camaps sideload bypass</a></li><li><a href="13-play-integrity-bypass-success.html">13 — play integrity bypass success</a></li><li><a href="20-camaps-apk-189-vs-192.html">20 — camaps apk 189 vs 192</a></li><li><a href="21-camaps-liberty-availability.html">21 — camaps liberty availability</a></li><li><a href="22-cgm-error-codes-reference.html">22 — cgm error codes reference</a></li></ul><h2>mylife app</h2><ul><li><a href="14-mylife-app-overview.html">14 — mylife app overview</a></li><li><a href="15-mylife-app-security.html">15 — mylife app security</a></li><li><a href="16-mylife-app-proregia-protocol.html" class="active">16 — mylife app proregia protocol</a></li><li><a href="17-mylife-app-components.html">17 — mylife app components</a></li><li><a href="18-mylife-app-bypass-plan.html">18 — mylife app bypass plan</a></li><li><a href="19-key-lifecycle-pump-rotation.html">19 — key lifecycle pump rotation</a></li></ul><h2>Guides</h2><ul><li><a href="../guides/building-a-driver-app.html">building a driver app</a></li><li><a href="../guides/frida-key-extraction.html">frida key extraction</a></li><li><a href="../guides/ble-sniffing-setup.html">ble sniffing setup</a></li></ul><h2>More</h2><ul><li><a href="../index.html">Home</a></li><li><a href="../data/index.html">Data / CSV</a></li><li><a href="https://github.com/master3395/ypsopump-research">GitHub</a></li></ul></nav>
+    <div class="main">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / 16 — mylife App: ProRegia Protokoll &amp; Key Exchange</div>
+      
+      <article class="content"><h1>16 — mylife App: ProRegia Protokoll &amp; Key Exchange</h1>
+<h2>Übersicht</h2>
+<p>Die mylife App kommuniziert über <strong>gRPC</strong> mit dem ProRegia Backend für den kryptographischen Key Exchange mit der YpsoPump. Das Protokoll ist nahezu identisch mit CamAPS FX, nutzt aber einen eigenen Endpoint.</p>
+<h2>ProRegia Backend</h2>
+<h3>Endpoint-Konfiguration</h3>
+<p>Die Konfiguration erfolgt über das <code>IProConfig</code>-Interface:</p>
+<pre><code class="language-csharp">// CryptoLib.Abstraction.dll / Proregia.Bluetooth.Contracts
+interface IProConfig {
+    string Host { get; }           // ProRegia Server Hostname
+    int Port { get; }              // ProRegia Server Port
+    string ApiKey { get; }         // App-spezifischer API Key
+    Dictionary CharMap { get; }     // BLE Characteristic Mapping
+    Guid GuidVirtualService { get; }
+    Guid GuidVirtualCharacteristic { get; }
+    ILogger Logger { get; }
+    int TimeoutInSeconds { get; }
+}
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>App</th>
+<th>Host</th>
+<th>Port</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>mylife App</td>
+<td><code>connect.ml.pr.sec01.proregia.io</code></td>
+<td>8090</td>
+</tr>
+<tr>
+<td>CamAPS FX</td>
+<td><code>connect.cam.pr.sec01.proregia.io</code></td>
+<td>443</td>
+</tr>
+</tbody></table>
+<h3>gRPC Service Definitionen</h3>
+<p>Aus den Protobuf-Marshallern in <code>Ypsomed.mylife.Apps.Services.Validation.dll</code>:</p>
+<pre><code class="language-protobuf">// Rekonstruierte Proto-Messages
+message ServerNonce { bytes server_nonce = 1; }
+message DeviceIdentifier { ... }
+
+message EncryptKeyRequest {
+    bytes cloud_challenge = 1;
+    // + pump public key, app public key, device id, etc.
+}
+message EncryptKeyResponse { ... }
+message EncryptCommanderKeyRequest { ... }  // Für mylife Dose (Bolus)
+
+message KeyAttestation { ... }
+message KeyAttestationForJwt { ... }
+message KeyAttestationResponse { ... }
+
+message SignJwtRequest { bytes jwt_token = 1; bytes nonce = 2; }
+message SignJwtResponse { bytes signature = 1; }
+
+message JwtKeyIdentifier { ... }
+
+message GetFirmwareRequest { ... }
+message FirmwareImage { ... }
+message FirmwareMetadata { ... }
+message FirmwareUpdatedResponse { ... }
+</code></pre>
+<h3>gRPC RPCs</h3>
+<pre><code class="language-protobuf">// Rekonstruierte Service Definition
+service ProregiaService {
+    // Key Exchange für BLE-Verschlüsselung
+    rpc NonceRequest(DeviceIdentifier) returns (ServerNonce);
+    rpc EncryptKey(EncryptKeyRequest) returns (EncryptKeyResponse);
+
+    // Bolus-Verschlüsselung (mylife Dose)
+    rpc EncryptCommanderKey(EncryptCommanderKeyRequest) returns (EncryptKeyResponse);
+
+    // Key Attestation (Hardware-basiert)
+    rpc NonceForKeyAttestation(DeviceIdentifier) returns (ServerNonce);
+    rpc NonceForKeyAttestationJwt(JwtKeyIdentifier) returns (ServerNonce);
+    rpc ValidateKeyAttestation(KeyAttestation) returns (KeyAttestationResponse);
+    rpc ValidateKeyAttestationJwt(KeyAttestationForJwt) returns (KeyAttestationResponse);
+
+    // JWT Signing
+    rpc SignJwt(SignJwtRequest) returns (SignJwtResponse);
+
+    // Firmware Updates
+    rpc GetFirmwareForPump(GetFirmwareRequest) returns (FirmwareImage);
+}
+</code></pre>
+<h2>Key Exchange Ablauf</h2>
+<h3>Schritt-für-Schritt</h3>
+<pre><code>┌──────────┐     ┌──────────────┐     ┌──────────┐
+│  App     │     │  ProRegia    │     │ YpsoPump │
+│ (Phone)  │     │  Backend     │     │  (BLE)   │
+└────┬─────┘     └──────┬───────┘     └────┬─────┘
+     │                   │                  │
+     │ 1. BLE Connect    │                  │
+     │ ──────────────────────────────────►  │
+     │                   │                  │
+     │ 2. Get Pump Public Key               │
+     │ ◄────────────────────────────────── │
+     │                   │                  │
+     │ 3. NonceRequest   │                  │
+     │ ─────────────────►│                  │
+     │ ◄─────────────────│ ServerNonce      │
+     │                   │                  │
+     │ 4. Play Integrity Token Request      │
+     │ ──────► Google ──►│                  │
+     │ ◄────── Play ◄────│                  │
+     │                   │                  │
+     │ 5. Key Attestation│                  │
+     │ (Android Keystore)│                  │
+     │ ─────────────────►│                  │
+     │ ◄─────────────────│ Attestation OK   │
+     │                   │                  │
+     │ 6. EncryptKey     │                  │
+     │ (challenge + keys)│                  │
+     │ ─────────────────►│                  │
+     │ ◄─────────────────│ EncryptKeyResp   │
+     │                   │                  │
+     │ 7. Key Exchange Part 1 (BLE)         │
+     │ ──────────────────────────────────►  │
+     │                   │                  │
+     │ 8. Key Exchange Part 2 (BLE)         │
+     │ ◄────────────────────────────────── │
+     │                   │                  │
+     │ 9. EnableCrypto   │                  │
+     │ ──────────────────────────────────►  │
+     │                   │                  │
+     │ ═══ Verschlüsselte BLE Kommunikation │
+</code></pre>
+<h3>Implementierung im Code</h3>
+<pre><code class="language-csharp">// Proregia.Bluetooth.Backend.RealServer
+class RealServer : IServer {
+    async Task&lt;ServerNonce&gt; GetServerNonceAsync();
+    async Task&lt;EncryptKeyResponse&gt; EncryptKeyAsync();
+    async Task&lt;ServerNonce&gt; GetServerNonceForKeyAttestationAsync();
+    async Task&lt;KeyAttestationResponse&gt; ValidateKeyAttestationAsync();
+}
+
+// Proregia.Bluetooth.ProDevice
+class ProDevice {
+    async Task KeyExchangeAsync();
+    async Task EnableCryptoAsync();
+    async Task DisableCryptoAsync();
+    async Task DeleteAttestationKey();
+    async Task&lt;DateTime&gt; GetEncryptionKeyExpirationDateAsync();
+}
+
+// Proregia.Bluetooth.ProCharacteristic
+class ProCharacteristic {
+    async Task KeyExchangeAsync();    // Part 1
+    async Task KeyExchangePart2();     // Part 2
+    async Task ReadExtendedChar();
+    async Task WriteExtendedChar();
+}
+</code></pre>
+<h2>Kryptographie</h2>
+<h3>Verschlüsselung</h3>
+<p>Die App nutzt <strong>libsodium</strong> (NaCl) für die BLE-Verschlüsselung:</p>
+<pre><code class="language-csharp">// Proregia.Bluetooth.Crypto.CryptoWrapper
+class CryptoWrapper {
+    async Task InitAsync();
+    async Task&lt;byte[]&gt; EncryptAsync();
+    async Task&lt;byte[]&gt; DecryptAsync();
+    async Task&lt;byte[]&gt; GetPublicKeyAsync();
+    async Task SetPumpPublicKeyAsync();
+    async Task&lt;byte[]&gt; GenerateOrGetDeviceIdAsync();
+    async Task ResetAsync();
+}
+</code></pre>
+<p><strong>Algorithmen</strong> (identisch zu CamAPS FX):</p>
+<ul>
+<li><strong>Key Agreement</strong>: X25519 (Curve25519 ECDH)</li>
+<li><strong>Encryption</strong>: XChaCha20-Poly1305 (AEAD)</li>
+<li><strong>Key Derivation</strong>: HChaCha20</li>
+<li><strong>Hashing</strong>: Blake2b (<code>Blake2bHashCall.GetBlake2bHash</code>)</li>
+</ul>
+<h3>Schlüsselspeicherung</h3>
+<pre><code class="language-csharp">// Proregia.Bluetooth.Crypto.EncryptedAppKeyStore
+class EncryptedAppKeyStore {
+    async Task&lt;KeyPair&gt; GetKeyPairAsync();        // App X25519 Keypair
+    async Task PutKeyPairAsync(KeyPair pair);
+    async Task&lt;byte[]&gt; GetPumpPublicKeyAsync();    // Pump Public Key
+    async Task PutPumpPublicKeyAsync(byte[] key);
+    async Task&lt;byte[]&gt; GetSharedKeyPumpAppAsync(); // Derived Shared Key
+    async Task&lt;DateTime&gt; GetSharedKeyPumpAppDateAsync(); // Key Expiry
+    async Task&lt;int&gt; GetRebootCounter();
+    async Task&lt;int&gt; GetNumericReadCounterFromPump();
+    async Task&lt;int&gt; GetNumericWriteCounterFromApp();
+    async Task&lt;string&gt; GetAttestationKeyId();
+    async Task DeleteAttestationKeyId();
+}
+</code></pre>
+<h2>mylife Dose (Bolus-Steuerung)</h2>
+<p>Die mylife App enthält eine spezielle Funktion für Bolus-Abgabe vom Smartphone:</p>
+<pre><code>EncryptCommanderKey — Separater gRPC Call für Commander-Keys
+EncryptCommanderKeyRequest — Enthält zusätzliche Autorisierung
+GetBolusStatus — Abfrage des Bolus-Delivery-Status
+cBolusDeliveryDoseActivity — Android Activity für Bolus-UI
+</code></pre>
+<p>Dies ist der <strong>Commander-Modus</strong>, bei dem die App als &quot;Commander&quot; fungiert und Bolus-Befehle an die Pumpe sendet. Der Commander-Key ist ein <strong>separater kryptographischer Schlüssel</strong>, der über einen eigenen gRPC-Call (<code>EncryptCommanderKey</code>) bezogen wird.</p>
+<p><strong>Wichtig</strong>: CamAPS FX hat <strong>denselben <code>EncryptCommanderKey</code>-Service</strong> (siehe Doc 05, Service #1). Beide Apps nutzen das identische ProRegia-Protokoll mit denselben gRPC-Services:</p>
+<ul>
+<li><code>EncryptKey</code> → Normaler BLE-Verschlüsselungs-Key (Lesen, Status)</li>
+<li><code>EncryptCommanderKey</code> → Commander-Key für Bolus-Befehle (Schreiben)</li>
+</ul>
+<p>Über den BLE Control Service (Index 27: <code>START_STOP_BOLUS</code>) werden dann die eigentlichen Bolus-Befehle verschlüsselt an die Pumpe gesendet. Beide Apps können also Bolus-Befehle absetzen — CamAPS FX nutzt dies sowohl für Micro-Boluses im Closed-Loop als auch für manuell berechnete Boluses.</p>
+<h2>Key Lifecycle &amp; Counter-Management</h2>
+<p>Siehe ausführliche Analyse in <a href="19-key-lifecycle-pump-rotation.html">19-key-lifecycle-pump-rotation.md</a>.</p>
+<h3>Zusammenfassung</h3>
+<ul>
+<li><strong>Pump Public Key</strong>: Statisch (factory-burned), rotiert <strong>NIEMALS</strong></li>
+<li><strong>Shared Key</strong>: Bleibt gültig bis die App einen neuen Key Exchange durchführt</li>
+<li><strong>28-Tage-Expiry</strong>: Nur app-seitig (<code>GetEncryptionKeyExpirationDateAsync()</code>), Pumpe prüft nicht</li>
+<li><strong>Reboot Counter</strong>: Pumpe zählt Neustarts; nach Neustart muss App erst lesen (Counter-Sync), dann schreiben</li>
+<li><strong>Commander Key</strong>: Kein separater Lifecycle — nutzt denselben Shared Key wie normale BLE-Verschlüsselung</li>
+</ul>
+<h3>Counter in verschlüsselten Nachrichten</h3>
+<p>Jede verschlüsselte BLE-Nachricht enthält am Ende 12 Bytes:</p>
+<pre><code>[rebootCounter 4B big-endian] [writeCounter 8B big-endian]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Counter</th>
+<th>Richtung</th>
+<th>Funktion</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>rebootCounter</code></td>
+<td>Pump → App</td>
+<td>Erkennung von Pumpen-Neustarts</td>
+</tr>
+<tr>
+<td><code>writeCounter</code></td>
+<td>App → Pump</td>
+<td>Monoton steigend pro Befehl</td>
+</tr>
+<tr>
+<td><code>readCounter</code></td>
+<td>Pump → App</td>
+<td>Monoton steigend pro Antwort</td>
+</tr>
+</tbody></table>
+<p>Fehler 138/139 = Counter-Mismatch (nicht Key-Invalidierung).</p>
+<h2>Firmware Updates</h2>
+<p>ProRegia unterstützt auch Pump-Firmware-Updates:</p>
+<pre><code>GetFirmwareForPump / GetFirmwareForPumpClient
+FirmwareImage / FirmwareMetadata
+FirmwareUpdatedResponse
+IntegrityCheckFailed (Dexcom.Android.Transmitter.Libraries)
+</code></pre>
+<h2>Referenz: vicktor/ypsomed-pump Repo</h2>
+<p>Das GitHub-Repo <a href="https://github.com/vicktor/ypsomed-pump">vicktor/ypsomed-pump</a> enthält eine vollständige Kotlin-Reimplementation des ProRegia-Protokolls. Dieses Repo nutzt einen <strong>Relay-Proxy</strong>, weil es kein Play Integrity Token generieren kann (Token ist an Package Name + Signing Certificate gebunden). Wir brauchen den Proxy NICHT, da wir STRONG_INTEGRITY über TrickyStore erreichen.</p>
+</article>
+      <footer class="site-footer">
+        <p><strong>Research only.</strong> Not a medical device. Insulin dosing errors can cause severe harm or death.</p>
+        <p>Based on <a href="https://github.com/SandraK82/ypsopump-research">SandraK82/ypsopump-research</a> (MIT). Enhanced fork by <a href="https://github.com/master3395/ypsopump-research">master3395</a>.</p>
+      </footer>
+    </div>
+  </div>
+</body>
+</html>

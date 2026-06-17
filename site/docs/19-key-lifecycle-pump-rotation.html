@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>19 — Key Lifecycle: Pump-seitige Rotation &amp; Counter-Management | YpsoPump Research</title>
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <a href="../index.html">YpsoPump Research</a>
+    <span class="tagline">#WeAreNotWaiting</span>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="Documentation"><h2>Pump and BLE</h2><ul><li><a href="01-hardware.html">01 — hardware</a></li><li><a href="02-ble-protocol.html">02 — ble protocol</a></li><li><a href="03-encryption.html">03 — encryption</a></li><li><a href="04-key-exchange.html">04 — key exchange</a></li></ul><h2>Backend and security</h2><ul><li><a href="05-backend-communication.html">05 — backend communication</a></li><li><a href="06-closed-loop-algorithm.html">06 — closed loop algorithm</a></li><li><a href="07-obfuscation.html">07 — obfuscation</a></li><li><a href="08-security-findings.html">08 — security findings</a></li><li><a href="09-bypass-options.html">09 — bypass options</a></li><li><a href="10-legal-analysis.html">10 — legal analysis</a></li></ul><h2>CamAPS FX</h2><ul><li><a href="11-camaps-algorithm-analysis.html">11 — camaps algorithm analysis</a></li><li><a href="12-camaps-sideload-bypass.html">12 — camaps sideload bypass</a></li><li><a href="13-play-integrity-bypass-success.html">13 — play integrity bypass success</a></li><li><a href="20-camaps-apk-189-vs-192.html">20 — camaps apk 189 vs 192</a></li><li><a href="21-camaps-liberty-availability.html">21 — camaps liberty availability</a></li><li><a href="22-cgm-error-codes-reference.html">22 — cgm error codes reference</a></li></ul><h2>mylife app</h2><ul><li><a href="14-mylife-app-overview.html">14 — mylife app overview</a></li><li><a href="15-mylife-app-security.html">15 — mylife app security</a></li><li><a href="16-mylife-app-proregia-protocol.html">16 — mylife app proregia protocol</a></li><li><a href="17-mylife-app-components.html">17 — mylife app components</a></li><li><a href="18-mylife-app-bypass-plan.html">18 — mylife app bypass plan</a></li><li><a href="19-key-lifecycle-pump-rotation.html" class="active">19 — key lifecycle pump rotation</a></li></ul><h2>Guides</h2><ul><li><a href="../guides/building-a-driver-app.html">building a driver app</a></li><li><a href="../guides/frida-key-extraction.html">frida key extraction</a></li><li><a href="../guides/ble-sniffing-setup.html">ble sniffing setup</a></li></ul><h2>More</h2><ul><li><a href="../index.html">Home</a></li><li><a href="../data/index.html">Data / CSV</a></li><li><a href="https://github.com/master3395/ypsopump-research">GitHub</a></li></ul></nav>
+    <div class="main">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / 19 — Key Lifecycle: Pump-seitige Rotation &amp; Counter-Management</div>
+      
+      <article class="content"><h1>19 — Key Lifecycle: Pump-seitige Rotation &amp; Counter-Management</h1>
+<h2>Übersicht</h2>
+<p>Dieses Dokument analysiert, was die Pumpe zum kryptographischen Key beiträgt, ob sie eigenständig Schlüssel rotiert, und wie das Counter-Management funktioniert. Die Erkenntnisse stammen aus der Analyse von:</p>
+<ul>
+<li>CamAPS FX Decompilation (Docs 03, 04)</li>
+<li>mylife App .NET Assembly-Analyse (Docs 14-18)</li>
+<li>vicktor/ypsomed-pump Kotlin-Reimplementation (<code>PumpCryptor.kt</code>)</li>
+</ul>
+<h2>Pump-Beiträge zum Key Exchange</h2>
+<h3>Was die Pumpe liefert</h3>
+<table>
+<thead>
+<tr>
+<th>Beitrag</th>
+<th>Größe</th>
+<th>Statisch/Dynamisch</th>
+<th>Fließt in Key-Ableitung ein?</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Curve25519 Public Key</strong></td>
+<td>32 Bytes</td>
+<td><strong>Statisch</strong> (factory-burned)</td>
+<td><strong>JA</strong> — ECDH: <code>scalarmult(app_private, pump_public)</code></td>
+</tr>
+<tr>
+<td><strong>Random Challenge</strong></td>
+<td>32 Bytes</td>
+<td>Dynamisch (pro Verbindung)</td>
+<td><strong>NEIN</strong> — wird nur an ProRegia gesendet</td>
+</tr>
+<tr>
+<td><strong>BT MAC Adresse</strong></td>
+<td>6 Bytes</td>
+<td>Statisch</td>
+<td><strong>NEIN</strong> — wird nur an ProRegia gesendet</td>
+</tr>
+<tr>
+<td><strong>Reboot Counter</strong></td>
+<td>4 Bytes</td>
+<td>Dynamisch (nach Neustart)</td>
+<td><strong>NEIN</strong> — nur Counter-Sync in verschlüsselten Nachrichten</td>
+</tr>
+</tbody></table>
+<h3>Key-Ableitung im Detail</h3>
+<pre><code>Shared Key = hchacha20(scalarmult(app_private_key, pump_public_key), zero_nonce)
+                        ^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^
+                        App-seitig generiert      Factory-burned, STATISCH
+</code></pre>
+<ul>
+<li>Der <strong>Pump Public Key</strong> ist ab Werk in den STM32F051 Flash eingebrannt und ändert sich <strong>NIEMALS</strong></li>
+<li>Der <strong>Random Challenge</strong> (32 Bytes pro Verbindung) dient nur zur Backend-Validierung — er fließt NICHT in die Key-Ableitung ein</li>
+<li>Die <strong>BT MAC Adresse</strong> wird an ProRegia gesendet, fließt aber ebenfalls NICHT in die Key-Ableitung ein</li>
+<li>Der Shared Key ändert sich nur, wenn die App einen neuen Private Key generiert (= neuer Key Exchange)</li>
+</ul>
+<h2>Pump-seitige Key-Rotation</h2>
+<h3>Rotiert die Pumpe ihren Schlüssel?</h3>
+<p><strong>NEIN.</strong> Die Pumpe rotiert weder ihren Public Key noch invalidiert sie bestehende Shared Keys:</p>
+<ol>
+<li><strong>Kein key-seitiges Timeout</strong>: Die Pumpe prüft NICHT, wie alt der Shared Key ist</li>
+<li><strong>Kein erzwungener Key-Wechsel</strong>: Die Pumpe fordert niemals einen neuen Key Exchange an</li>
+<li><strong>Statischer Public Key</strong>: Der Curve25519 Public Key ist ab Werk eingebrannt</li>
+<li><strong>28-Tage-Expiry ist app-seitig</strong>: Nur <code>GetEncryptionKeyExpirationDateAsync()</code> in der App prüft das Alter</li>
+</ol>
+<h3>Quelle: Doc 03</h3>
+<blockquote>
+<p>&quot;The 28-day key expiration is enforced APP-SIDE ONLY. The pump itself does not check the age of the shared key.&quot;
+— Manipulating <code>sharedKeyDate</code> in SharedPreferences extends key validity indefinitely.</p>
+</blockquote>
+<h3>Quelle: vicktor/ypsomed-pump (<code>PumpCryptor.kt</code>)</h3>
+<pre><code class="language-kotlin">// Key wird mit 3650 Tagen Expiry gespeichert, aber:
+// &quot;la validez real del protocolo es de 28 días&quot;
+// (die tatsächliche Protokoll-Gültigkeit beträgt 28 Tage)
+System.currentTimeMillis() + 3650L * 24 * 3600 * 1000
+</code></pre>
+<p>Der 3650-Tage-Wert (10 Jahre) ist ein Platzhalter — die eigentliche 28-Tage-Prüfung wird in der offiziellen App separat durchgeführt.</p>
+<h2>Counter-Management</h2>
+<h3>Drei Counter im verschlüsselten Protokoll</h3>
+<p>Jede verschlüsselte BLE-Nachricht enthält am Ende 12 Bytes Counter-Daten:</p>
+<pre><code>Plaintext vor Verschlüsselung:
+┌──────────────────────┬──────────────────────────────┐
+│  Command Data (var)  │  Counter Data (12B)          │
+│                      │  [rebootCounter 4B, big-end] │
+│                      │  [writeCounter 8B, big-end]  │
+└──────────────────────┴──────────────────────────────┘
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Counter</th>
+<th>Größe</th>
+<th>Richtung</th>
+<th>Beschreibung</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>rebootCounter</strong></td>
+<td>4 Bytes (Big-Endian)</td>
+<td>Pump → App</td>
+<td>Zählt Pumpen-Neustarts seit Key Exchange</td>
+</tr>
+<tr>
+<td><strong>writeCounter</strong></td>
+<td>8 Bytes (Big-Endian)</td>
+<td>App → Pump</td>
+<td>Monoton steigend pro gesendeter Nachricht</td>
+</tr>
+<tr>
+<td><strong>readCounter</strong></td>
+<td>8 Bytes (Big-Endian)</td>
+<td>Pump → App</td>
+<td>Monoton steigend pro empfangener Nachricht</td>
+</tr>
+</tbody></table>
+<h3>Reboot Counter — Das einzige dynamische Element</h3>
+<p>Aus <code>PumpCryptor.kt</code> (vicktor/ypsomed-pump):</p>
+<pre><code class="language-kotlin">// Beim Entschlüsseln einer Pump-Nachricht:
+val pumpRebootCounter = // aus den letzten 12 Bytes der entschlüsselten Nachricht
+
+if (pumpRebootCounter != localRebootCounter) {
+    // Pumpe wurde neu gestartet!
+    localRebootCounter = pumpRebootCounter
+    writeCounter = 0  // Write-Counter auf 0 zurücksetzen
+}
+</code></pre>
+<p><strong>Verhalten nach Pumpen-Neustart</strong>:</p>
+<ol>
+<li>Pumpe erhöht ihren internen <code>rebootCounter</code></li>
+<li>App empfängt eine verschlüsselte Nachricht der Pumpe</li>
+<li>App liest den neuen <code>rebootCounter</code> aus der Nachricht</li>
+<li>App setzt <code>writeCounter</code> auf 0 zurück</li>
+<li><strong>Shared Key bleibt gültig</strong> — nur Counter werden zurückgesetzt</li>
+</ol>
+<h3>Kritische Regel: Erst lesen, dann schreiben</h3>
+<p>Aus <code>PumpCryptor.kt</code>:</p>
+<blockquote>
+<p>&quot;Es ist imprescindible descifrar al menos una respuesta de la bomba antes de enviar cualquier comando cifrado&quot;
+(Es ist zwingend notwendig, mindestens eine Antwort der Pumpe zu entschlüsseln, bevor verschlüsselte Befehle gesendet werden)</p>
+</blockquote>
+<p>Dies liegt daran, dass nach einem Pumpen-Neustart der <code>rebootCounter</code> sich ändert. Die App MUSS erst den neuen Counter lesen, bevor sie Befehle senden kann.</p>
+<h3>Counter-Fehler</h3>
+<table>
+<thead>
+<tr>
+<th>Fehlercode</th>
+<th>Bezeichnung</th>
+<th>Ursache</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>138</td>
+<td><code>COUNTER_MISMATCH</code></td>
+<td>Write-Counter stimmt nicht mit Pumpen-Erwartung überein</td>
+</tr>
+<tr>
+<td>139</td>
+<td><code>COUNTER_ERROR</code></td>
+<td>Allgemeiner Counter-Fehler (falscher rebootCounter)</td>
+</tr>
+</tbody></table>
+<p><strong>Wichtig</strong>: Counter-Fehler invalidieren den Shared Key NICHT. Sie erfordern lediglich eine Counter-Resynchronisation.</p>
+<h2>Speicherung in der App</h2>
+<h3>mylife App (EncryptedAppKeyStore)</h3>
+<pre><code class="language-csharp">class EncryptedAppKeyStore {
+    GetKeyPairAsync()                  // App X25519 Keypair
+    GetPumpPublicKeyAsync()            // Pump Public Key (statisch)
+    GetSharedKeyPumpAppAsync()         // Abgeleiteter Shared Key
+    GetSharedKeyPumpAppDateAsync()     // Key-Erstellungszeitpunkt (28-Tage-Check)
+    GetRebootCounter()                 // Letzter bekannter Reboot Counter
+    GetNumericReadCounterFromPump()    // Lese-Counter
+    GetNumericWriteCounterFromApp()    // Schreib-Counter
+    GetAttestationKeyId()              // Hardware Key Attestation ID
+}
+</code></pre>
+<h3>CamAPS FX (EncryptedSharedPreferences)</h3>
+<pre><code>sharedKey       → 32-Byte Shared Key
+privateKey      → 32-Byte App Private Key
+pumpPublicKey   → 32-Byte Pump Public Key
+sharedKeyDate   → Timestamp für 28-Tage-Expiry
+writeCounter    → Aktueller Write Counter
+readCounter     → Aktueller Read Counter
+</code></pre>
+<h2>Implikationen für den Bypass</h2>
+<h3>Gute Nachrichten</h3>
+<ol>
+<li><strong>Ein erfolgreicher Key Exchange reicht</strong>: Der Shared Key funktioniert unbegrenzt, solange die App ihn nicht verwirft</li>
+<li><strong>Kein pump-seitiges Timeout</strong>: Die Pumpe erzwingt keinen Key-Wechsel</li>
+<li><strong>28-Tage-Expiry umgehbar</strong>: Nur die App prüft das Alter — <code>sharedKeyDate</code> manipulieren oder Prüfung per Frida/Patch umgehen</li>
+<li><strong>Commander Key hat keinen separaten Lifecycle</strong>: Derselbe Shared Key wird für normale und Commander-Operationen verwendet</li>
+<li><strong>Reboot überlebt</strong>: Auch nach Pumpen-Neustart bleibt der Shared Key gültig</li>
+</ol>
+<h3>Vorsichtsmaßnahmen</h3>
+<ol>
+<li><strong>Nach Pumpen-Neustart</strong>: Erst eine Pump-Nachricht lesen (Counter-Sync), dann erst Befehle senden</li>
+<li><strong>Write Counter monoton</strong>: Muss bei jedem Befehl erhöht werden, sonst Fehler 138/139</li>
+<li><strong>Counter lokal persistieren</strong>: Bei App-Neustart müssen die Counter aus dem Storage gelesen werden</li>
+<li><strong>Kein paralleler Zugriff</strong>: Nur ein Gerät kann gleichzeitig verschlüsselt mit der Pumpe kommunizieren</li>
+</ol>
+<h3>Szenario: Was passiert wenn...</h3>
+<table>
+<thead>
+<tr>
+<th>Ereignis</th>
+<th>Shared Key</th>
+<th>Counter</th>
+<th>Aktion nötig?</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Pumpe wird neu gestartet</td>
+<td>Bleibt gültig</td>
+<td>rebootCounter ändert sich</td>
+<td>Ja: erst lesen, dann schreiben</td>
+</tr>
+<tr>
+<td>App wird neu gestartet</td>
+<td>Bleibt gültig (aus Storage)</td>
+<td>Aus Storage laden</td>
+<td>Nein (automatisch)</td>
+</tr>
+<tr>
+<td>28 Tage vergehen</td>
+<td>App verwirft ihn</td>
+<td>Reset auf 0</td>
+<td>Neuer Key Exchange nötig</td>
+</tr>
+<tr>
+<td><code>sharedKeyDate</code> manipuliert</td>
+<td>Bleibt gültig</td>
+<td>Unverändert</td>
+<td>Nein</td>
+</tr>
+<tr>
+<td>Zweites Gerät macht Key Exchange</td>
+<td><strong>Wird überschrieben</strong></td>
+<td>Reset auf 0</td>
+<td>Erstes Gerät verliert Zugriff</td>
+</tr>
+</tbody></table>
+<h2>Zusammenfassung</h2>
+<pre><code>┌─────────────────────────────────────────────────────────────────┐
+│                    KEY LIFECYCLE                                 │
+│                                                                 │
+│  Pump Public Key:    STATISCH (factory-burned, nie rotiert)     │
+│  Shared Key:         STABIL (bis App neuen Key Exchange macht)  │
+│  28-Tage-Expiry:     NUR APP-SEITIG (Pump prüft nicht)         │
+│  Reboot Counter:     DYNAMISCH (aber Key bleibt gültig)         │
+│  Write/Read Counter: MONOTON STEIGEND (Reset bei Reboot/KE)    │
+│  Commander Key:      KEIN separater Lifecycle                   │
+│                                                                 │
+│  → Einmaliger Key Exchange = unbegrenzter verschlüsselter       │
+│    Kanal zur Pumpe (wenn App-seitige Prüfung umgangen wird)    │
+└─────────────────────────────────────────────────────────────────┘
+</code></pre>
+</article>
+      <footer class="site-footer">
+        <p><strong>Research only.</strong> Not a medical device. Insulin dosing errors can cause severe harm or death.</p>
+        <p>Based on <a href="https://github.com/SandraK82/ypsopump-research">SandraK82/ypsopump-research</a> (MIT). Enhanced fork by <a href="https://github.com/master3395/ypsopump-research">master3395</a>.</p>
+      </footer>
+    </div>
+  </div>
+</body>
+</html>

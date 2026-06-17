@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>10 — Legal Analysis: Right to Interoperability | YpsoPump Research</title>
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <a href="../index.html">YpsoPump Research</a>
+    <span class="tagline">#WeAreNotWaiting</span>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="Documentation"><h2>Pump and BLE</h2><ul><li><a href="01-hardware.html">01 — hardware</a></li><li><a href="02-ble-protocol.html">02 — ble protocol</a></li><li><a href="03-encryption.html">03 — encryption</a></li><li><a href="04-key-exchange.html">04 — key exchange</a></li></ul><h2>Backend and security</h2><ul><li><a href="05-backend-communication.html">05 — backend communication</a></li><li><a href="06-closed-loop-algorithm.html">06 — closed loop algorithm</a></li><li><a href="07-obfuscation.html">07 — obfuscation</a></li><li><a href="08-security-findings.html">08 — security findings</a></li><li><a href="09-bypass-options.html">09 — bypass options</a></li><li><a href="10-legal-analysis.html" class="active">10 — legal analysis</a></li></ul><h2>CamAPS FX</h2><ul><li><a href="11-camaps-algorithm-analysis.html">11 — camaps algorithm analysis</a></li><li><a href="12-camaps-sideload-bypass.html">12 — camaps sideload bypass</a></li><li><a href="13-play-integrity-bypass-success.html">13 — play integrity bypass success</a></li><li><a href="20-camaps-apk-189-vs-192.html">20 — camaps apk 189 vs 192</a></li><li><a href="21-camaps-liberty-availability.html">21 — camaps liberty availability</a></li><li><a href="22-cgm-error-codes-reference.html">22 — cgm error codes reference</a></li></ul><h2>mylife app</h2><ul><li><a href="14-mylife-app-overview.html">14 — mylife app overview</a></li><li><a href="15-mylife-app-security.html">15 — mylife app security</a></li><li><a href="16-mylife-app-proregia-protocol.html">16 — mylife app proregia protocol</a></li><li><a href="17-mylife-app-components.html">17 — mylife app components</a></li><li><a href="18-mylife-app-bypass-plan.html">18 — mylife app bypass plan</a></li><li><a href="19-key-lifecycle-pump-rotation.html">19 — key lifecycle pump rotation</a></li></ul><h2>Guides</h2><ul><li><a href="../guides/building-a-driver-app.html">building a driver app</a></li><li><a href="../guides/frida-key-extraction.html">frida key extraction</a></li><li><a href="../guides/ble-sniffing-setup.html">ble sniffing setup</a></li></ul><h2>More</h2><ul><li><a href="../index.html">Home</a></li><li><a href="../data/index.html">Data / CSV</a></li><li><a href="https://github.com/master3395/ypsopump-research">GitHub</a></li></ul></nav>
+    <div class="main">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / 10 — Legal Analysis: Right to Interoperability</div>
+      
+      <article class="content"><h1>10 — Legal Analysis: Right to Interoperability</h1>
+<h2>Overview</h2>
+<p>This document analyses the legal framework supporting the right to reverse engineer medical device communication protocols for interoperability, with focus on EU regulations and the #WeAreNotWaiting movement.</p>
+<h2>EHDS — European Health Data Space</h2>
+<p>The <strong>European Health Data Space Regulation</strong> (EU 2025/327) establishes:</p>
+<h3>Article 3: Right to Access Electronic Health Data</h3>
+<blockquote>
+<p>Natural persons shall have the right to access their electronic health data processed in the context of healthcare [...] in an easily readable, consolidated and accessible form.</p>
+</blockquote>
+<h3>Article 7: Right to Data Portability</h3>
+<blockquote>
+<p>Natural persons shall have the right to transmit electronic health data [...] to a recipient of their choice.</p>
+</blockquote>
+<h3>Relevance</h3>
+<p>Insulin pump data (basal rates, bolus history, glucose data) constitutes electronic health data under EHDS. The regulation grants patients the right to access and port this data — which requires understanding the communication protocol.</p>
+<h2>GDPR — General Data Protection Regulation</h2>
+<h3>Article 15: Right of Access</h3>
+<p>Patients have the right to obtain from Ypsomed/CamDiab all personal data being processed, including:</p>
+<ul>
+<li>Pump settings and delivery history</li>
+<li>CGM data transmitted via the app</li>
+<li>Algorithm decisions and dosing recommendations</li>
+<li>Cloud-stored health data</li>
+</ul>
+<h3>Article 20: Right to Data Portability</h3>
+<blockquote>
+<p>The data subject shall have the right to receive the personal data concerning him or her [...] in a structured, commonly used and machine-readable format and have the right to transmit those data to another controller.</p>
+</blockquote>
+<p>This directly supports the development of alternative apps that can communicate with the pump.</p>
+<h2>EU Software Directive (2009/24/EC)</h2>
+<h3>Article 6: Decompilation</h3>
+<p>Decompilation is permitted without authorisation when:</p>
+<ol>
+<li><strong>Performed by a licensee</strong> — the APK was obtained as a licensed user</li>
+<li><strong>Necessary for interoperability</strong> — no documentation is available for the BLE protocol</li>
+<li><strong>Limited to parts necessary</strong> — only communication protocol was analysed</li>
+<li><strong>Not used to create competing product</strong> — AAPS is open-source, non-commercial</li>
+</ol>
+<blockquote>
+<p>&quot;The authorisation of the rightholder shall not be required where reproduction of the code and translation of its form [...] are indispensable to obtain the information necessary to achieve the interoperability of an independently created computer program with other programs.&quot;</p>
+</blockquote>
+<h2>EU Cyber Resilience Act (CRA)</h2>
+<p>The CRA (Regulation 2024/2847) establishes cybersecurity requirements for products with digital elements. Notably:</p>
+<h3>Article 13(6): Security Researchers</h3>
+<blockquote>
+<p>Manufacturers shall facilitate the analysis and testing of the software included in the product with digital elements by security researchers.</p>
+</blockquote>
+<h3>Vulnerability Disclosure</h3>
+<p>The CRA mandates coordinated vulnerability disclosure processes. Our security findings (Section 08) align with this framework.</p>
+<h2>Right to Repair (EU)</h2>
+<p>The <strong>EU Right to Repair Directive</strong> (2024/1799) establishes:</p>
+<ul>
+<li>Consumers&#39; right to have products repaired</li>
+<li>Access to spare parts, tools, and repair information</li>
+<li>Manufacturers cannot use software locks to prevent repair</li>
+</ul>
+<p>While primarily targeting consumer electronics, the principle extends to software interoperability of medical devices that patients depend on daily.</p>
+<h2>DMCA / US Copyright Law</h2>
+<h3>Section 1201(f): Reverse Engineering for Interoperability</h3>
+<blockquote>
+<p>A person who has lawfully obtained the right to use a copy of a computer program may circumvent a technological measure [...] for the sole purpose of identifying and analysing those elements of the program that are necessary to achieve interoperability of an independently created computer program.</p>
+</blockquote>
+<p>This applies directly to developing an AndroidAPS driver for the YpsoPump.</p>
+<h3>Section 1201(j): Security Testing</h3>
+<blockquote>
+<p>It is not a violation [...] to engage in an act of security testing, if such act does not constitute infringement and is performed solely to test, investigate, correct, or improve the security of the computer system.</p>
+</blockquote>
+<p>Our security findings (CVEs, missing cert pinning, hardcoded secrets) qualify as security research.</p>
+<h2>Medical Device Regulation (EU MDR 2017/745)</h2>
+<h3>Patient Safety Argument</h3>
+<p>The #WeAreNotWaiting movement argues:</p>
+<ol>
+<li><strong>Commercial solutions are insufficient</strong> — CamAPS FX is the only app for YpsoPump, creating single-vendor dependency</li>
+<li><strong>Algorithmic choice</strong> — patients should choose their preferred algorithm (oref1/OpenAPS may suit some patients better)</li>
+<li><strong>Availability</strong> — CamAPS FX is not available in all countries</li>
+<li><strong>Customisation</strong> — individual patients have unique needs that commercial solutions may not address</li>
+<li><strong>Data sovereignty</strong> — patients should control their own health data flow</li>
+</ol>
+<h3>Precedent: OpenAPS / Loop / AAPS</h3>
+<ul>
+<li><strong>OpenAPS</strong> has been used safely by thousands of patients since 2015</li>
+<li><strong>AndroidAPS</strong> is a widely used open-source AID system</li>
+<li><strong>Loop</strong> (iOS) has comparable safety records</li>
+<li>Multiple peer-reviewed studies confirm safety of DIY closed-loop systems</li>
+<li>The FDA has not pursued enforcement against DIY systems</li>
+</ul>
+<h2>German Law (StGB, UrhG)</h2>
+<h3>§ 69e UrhG — Decompilation</h3>
+<p>German copyright law explicitly permits decompilation for interoperability (implementing EU Directive 2009/24/EC). The conditions mirror the EU directive.</p>
+<h3>§ 202a StGB — Ausspähen von Daten</h3>
+<p>&quot;Hacking&quot; law — does NOT apply when:</p>
+<ul>
+<li>The device is owned by the researcher</li>
+<li>The data being accessed is the researcher&#39;s own health data</li>
+<li>The purpose is interoperability, not unauthorised access</li>
+</ul>
+<h3>§ 303a StGB — Datenveränderung</h3>
+<p>Data modification law — writing commands to one&#39;s own pump using an alternative app does not constitute criminal data modification, as the patient has the right to control their own device.</p>
+<h2>Disclaimer</h2>
+<p>This analysis is provided for informational purposes only and does not constitute legal advice. The legal landscape around medical device interoperability is evolving. Key points:</p>
+<ol>
+<li><strong>Personal use</strong>: Reverse engineering for personal interoperability is well-protected under EU and US law</li>
+<li><strong>No distribution of copyrighted code</strong>: This repository does not include decompiled source code</li>
+<li><strong>Security research</strong>: Vulnerability findings follow responsible disclosure principles</li>
+<li><strong>Patient autonomy</strong>: The right to choose one&#39;s own medical device software is increasingly recognised</li>
+<li><strong>#WeAreNotWaiting</strong>: A global movement of patients and developers creating open-source diabetes technology</li>
+</ol>
+<h2>References</h2>
+<ul>
+<li><a href="https://eur-lex.europa.eu/eli/reg/2025/327">EU EHDS Regulation 2025/327</a></li>
+<li><a href="https://eur-lex.europa.eu/eli/dir/2009/24">EU Software Directive 2009/24/EC</a></li>
+<li><a href="https://eur-lex.europa.eu/eli/reg/2024/2847">EU Cyber Resilience Act 2024/2847</a></li>
+<li><a href="https://eur-lex.europa.eu/eli/dir/2024/1799">EU Right to Repair Directive 2024/1799</a></li>
+<li><a href="https://gdpr-info.eu/">GDPR Articles 15, 20</a></li>
+<li><a href="https://www.law.cornell.edu/uscode/text/17/1201">US DMCA §1201</a></li>
+<li><a href="https://eur-lex.europa.eu/eli/reg/2017/745">EU MDR 2017/745</a></li>
+<li><a href="https://openaps.org/">OpenAPS.org</a></li>
+<li><a href="https://androidaps.readthedocs.io/">AndroidAPS Documentation</a></li>
+<li><a href="https://www.wearenotwaiting.org/">#WeAreNotWaiting</a></li>
+</ul>
+</article>
+      <footer class="site-footer">
+        <p><strong>Research only.</strong> Not a medical device. Insulin dosing errors can cause severe harm or death.</p>
+        <p>Based on <a href="https://github.com/SandraK82/ypsopump-research">SandraK82/ypsopump-research</a> (MIT). Enhanced fork by <a href="https://github.com/master3395/ypsopump-research">master3395</a>.</p>
+      </footer>
+    </div>
+  </div>
+</body>
+</html>

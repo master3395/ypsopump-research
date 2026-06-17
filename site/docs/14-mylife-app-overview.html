@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>14 — mylife App: Überblick &amp; Architektur | YpsoPump Research</title>
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <a href="../index.html">YpsoPump Research</a>
+    <span class="tagline">#WeAreNotWaiting</span>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="Documentation"><h2>Pump and BLE</h2><ul><li><a href="01-hardware.html">01 — hardware</a></li><li><a href="02-ble-protocol.html">02 — ble protocol</a></li><li><a href="03-encryption.html">03 — encryption</a></li><li><a href="04-key-exchange.html">04 — key exchange</a></li></ul><h2>Backend and security</h2><ul><li><a href="05-backend-communication.html">05 — backend communication</a></li><li><a href="06-closed-loop-algorithm.html">06 — closed loop algorithm</a></li><li><a href="07-obfuscation.html">07 — obfuscation</a></li><li><a href="08-security-findings.html">08 — security findings</a></li><li><a href="09-bypass-options.html">09 — bypass options</a></li><li><a href="10-legal-analysis.html">10 — legal analysis</a></li></ul><h2>CamAPS FX</h2><ul><li><a href="11-camaps-algorithm-analysis.html">11 — camaps algorithm analysis</a></li><li><a href="12-camaps-sideload-bypass.html">12 — camaps sideload bypass</a></li><li><a href="13-play-integrity-bypass-success.html">13 — play integrity bypass success</a></li><li><a href="20-camaps-apk-189-vs-192.html">20 — camaps apk 189 vs 192</a></li><li><a href="21-camaps-liberty-availability.html">21 — camaps liberty availability</a></li><li><a href="22-cgm-error-codes-reference.html">22 — cgm error codes reference</a></li></ul><h2>mylife app</h2><ul><li><a href="14-mylife-app-overview.html" class="active">14 — mylife app overview</a></li><li><a href="15-mylife-app-security.html">15 — mylife app security</a></li><li><a href="16-mylife-app-proregia-protocol.html">16 — mylife app proregia protocol</a></li><li><a href="17-mylife-app-components.html">17 — mylife app components</a></li><li><a href="18-mylife-app-bypass-plan.html">18 — mylife app bypass plan</a></li><li><a href="19-key-lifecycle-pump-rotation.html">19 — key lifecycle pump rotation</a></li></ul><h2>Guides</h2><ul><li><a href="../guides/building-a-driver-app.html">building a driver app</a></li><li><a href="../guides/frida-key-extraction.html">frida key extraction</a></li><li><a href="../guides/ble-sniffing-setup.html">ble sniffing setup</a></li></ul><h2>More</h2><ul><li><a href="../index.html">Home</a></li><li><a href="../data/index.html">Data / CSV</a></li><li><a href="https://github.com/master3395/ypsopump-research">GitHub</a></li></ul></nav>
+    <div class="main">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / 14 — mylife App: Überblick &amp; Architektur</div>
+      
+      <article class="content"><h1>14 — mylife App: Überblick &amp; Architektur</h1>
+<h2>Allgemein</h2>
+<table>
+<thead>
+<tr>
+<th>Eigenschaft</th>
+<th>Wert</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>App-Name</strong></td>
+<td>mylife App</td>
+</tr>
+<tr>
+<td><strong>Package</strong></td>
+<td><code>net.sinovo.mylife.app</code></td>
+</tr>
+<tr>
+<td><strong>Version</strong></td>
+<td>2.4.3_001 (versionCode 204030019)</td>
+</tr>
+<tr>
+<td><strong>Hersteller</strong></td>
+<td>Sinovo / Ypsomed AG</td>
+</tr>
+<tr>
+<td><strong>Framework</strong></td>
+<td>Xamarin.Forms (.NET/C#, Mono Runtime)</td>
+</tr>
+<tr>
+<td><strong>Min SDK</strong></td>
+<td>25 (Android 7.1)</td>
+</tr>
+<tr>
+<td><strong>Target SDK</strong></td>
+<td>34 (Android 14)</td>
+</tr>
+<tr>
+<td><strong>APK-Größe</strong></td>
+<td>~130 MB (base) + 124 MB (native arm64)</td>
+</tr>
+<tr>
+<td><strong>Play Store</strong></td>
+<td><a href="https://play.google.com/store/apps/details?id=net.sinovo.mylife.app">Google Play</a></td>
+</tr>
+</tbody></table>
+<h2>Funktionsumfang</h2>
+<p>Die mylife App ist die offizielle Companion-App für die <strong>mylife YpsoPump</strong>. Im Vergleich zu CamAPS FX (das nur Closed-Loop-Steuerung bietet) hat die mylife App einen breiteren Funktionsumfang:</p>
+<ol>
+<li><strong>mylife Dose</strong> — Bolus-Abgabe direkt vom Smartphone (EncryptCommanderKey-Mechanismus)</li>
+<li><strong>Pump-Statusanzeige</strong> — Reservoir, Batterie, aktuelle Basalrate</li>
+<li><strong>Dexcom CGM Integration</strong> — Vollständige Dexcom G6/G7 Transmitter-Anbindung</li>
+<li><strong>Blutzucker-Logbuch</strong> — Manuelle BZ-Eingabe und CGM-Verlauf</li>
+<li><strong>Berichte</strong> — PDF-Reports (SinovoPdfReports.dll)</li>
+<li><strong>Cloud-Sync</strong> — Ypsomed Cloud + Dexcom Share</li>
+<li><strong>Widget</strong> — Homescreen-Widget mit aktuellem Status</li>
+</ol>
+<h2>Architektur</h2>
+<h3>Framework-Stack</h3>
+<pre><code>┌─────────────────────────────────────────┐
+│  Xamarin.Forms UI (MVVM via MvvmCross)  │
+├─────────────────────────────────────────┤
+│  Ypsomed.mylife.Apps.Services.*         │
+│  (Validation, Cloud, Config, Storage)   │
+├─────────────────────────────────────────┤
+│  CryptoLib.Abstraction (Proregia BLE)   │
+│  CryptoLib (Native Crypto Wrapper)      │
+├──────────────┬──────────────────────────┤
+│  Plugin.BLE  │  Dexcom.Android.*        │
+│  (BLE Layer) │  (CGM Integration)       │
+├──────────────┴──────────────────────────┤
+│  Mono Runtime (libmonodroid.so)         │
+│  Native Libs: libsodium.so, libgrpc_*  │
+└─────────────────────────────────────────┘
+</code></pre>
+<h3>Kern-Assemblies</h3>
+<table>
+<thead>
+<tr>
+<th>Assembly</th>
+<th>Funktion</th>
+<th>Größe</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>mylife App.dll</code></td>
+<td>App-Entry, AuditApp</td>
+<td>23 KB</td>
+</tr>
+<tr>
+<td><code>Ypsomed.mylife.Apps.Services.Validation.dll</code></td>
+<td>ProRegia-Client, gRPC, Key Exchange, Crypto</td>
+<td>214 KB</td>
+</tr>
+<tr>
+<td><code>CryptoLib.Abstraction.dll</code></td>
+<td>Proregia.Bluetooth.* Namespace, BLE-Protokoll</td>
+<td>376 KB</td>
+</tr>
+<tr>
+<td><code>CryptoLib.dll</code></td>
+<td>Native Crypto Wrapper (libsodium P/Invoke)</td>
+<td>127 KB</td>
+</tr>
+<tr>
+<td><code>nexus.core.dll</code></td>
+<td>Kern-Business-Logic</td>
+<td>155 KB</td>
+</tr>
+<tr>
+<td><code>Sodium.Core.dll</code></td>
+<td>SQLite Crypto (sqlite3_key)</td>
+<td>51 KB</td>
+</tr>
+<tr>
+<td><code>Plugin.BLE.dll</code></td>
+<td>BLE Abstraction Layer</td>
+<td>235 KB</td>
+</tr>
+<tr>
+<td><code>Dexcom.Android.Event.dll</code></td>
+<td>Play Integrity + Device Attestation</td>
+<td>120 KB</td>
+</tr>
+<tr>
+<td><code>Dexcom.Android.Transmitter.Libraries.dll</code></td>
+<td>Dexcom CGM Transmitter BLE</td>
+<td>N/A</td>
+</tr>
+</tbody></table>
+<h3>Native Libraries</h3>
+<table>
+<thead>
+<tr>
+<th>Library</th>
+<th>Funktion</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>libsodium.so</code></td>
+<td>NaCl Crypto (XChaCha20-Poly1305, Curve25519)</td>
+</tr>
+<tr>
+<td><code>libgrpc_csharp_ext.so</code></td>
+<td>gRPC C-Extension für ProRegia Backend</td>
+</tr>
+<tr>
+<td><code>libmonodroid.so</code></td>
+<td>Xamarin/Mono Android Runtime</td>
+</tr>
+<tr>
+<td><code>libmonosgen-2.0.so</code></td>
+<td>Mono GC (SGen)</td>
+</tr>
+<tr>
+<td><code>libSkiaSharp.so</code></td>
+<td>2D-Grafik (Charts)</td>
+</tr>
+<tr>
+<td><code>libe_sqlite3.so</code></td>
+<td>SQLite (verschlüsselt via sqlite3_key)</td>
+</tr>
+<tr>
+<td><code>libmono-btls-shared.so</code></td>
+<td>Mono BoringTLS</td>
+</tr>
+</tbody></table>
+<h2>Vergleich: mylife App vs CamAPS FX</h2>
+<table>
+<thead>
+<tr>
+<th>Aspekt</th>
+<th>mylife App</th>
+<th>CamAPS FX</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Framework</strong></td>
+<td>Xamarin/.NET (C#)</td>
+<td>Native Android (Java/Kotlin)</td>
+</tr>
+<tr>
+<td><strong>Obfuscation</strong></td>
+<td>Keine (Klartext-Symbole)</td>
+<td>DexGuard (verschlüsselte Klassen)</td>
+</tr>
+<tr>
+<td><strong>Anti-Tamper</strong></td>
+<td>Keine</td>
+<td>libe61d.so (PairIP)</td>
+</tr>
+<tr>
+<td><strong>Root Detection</strong></td>
+<td>Keine</td>
+<td>DexGuard Root Checks</td>
+</tr>
+<tr>
+<td><strong>Play Integrity</strong></td>
+<td>Ja (für Key Exchange)</td>
+<td>Ja (für Key Exchange)</td>
+</tr>
+<tr>
+<td><strong>Key Exchange</strong></td>
+<td>ProRegia gRPC (<code>ml.pr</code>)</td>
+<td>ProRegia gRPC (<code>cam.pr</code>)</td>
+</tr>
+<tr>
+<td><strong>Bolus Control</strong></td>
+<td>Ja (mylife Dose, separater Commander-Key)</td>
+<td>Ja (über Closed Loop + manuelle Bolus-Berechnung)</td>
+</tr>
+<tr>
+<td><strong>CGM</strong></td>
+<td>Dexcom G6/G7 integriert</td>
+<td>Dexcom G6/G7 + Libre</td>
+</tr>
+<tr>
+<td><strong>Pump Connection</strong></td>
+<td>YpsoPump BLE</td>
+<td>YpsoPump BLE</td>
+</tr>
+<tr>
+<td><strong>Backend</strong></td>
+<td>Ypsomed Cloud</td>
+<td>Glooko/Diasend</td>
+</tr>
+<tr>
+<td><strong>Crypto</strong></td>
+<td>libsodium (NaCl)</td>
+<td>Custom Java (in libe61d.so)</td>
+</tr>
+<tr>
+<td><strong>Decompilierbarkeit</strong></td>
+<td>Einfach (monodis/ILSpy)</td>
+<td>Schwer (DexGuard)</td>
+</tr>
+</tbody></table>
+<h2>Build-Informationen</h2>
+<pre><code>Build-Server: /Users/iosbuild/builds/uVNqL2da/0/customers/proregia/
+Projekt-Pfad: proregia-xamarin-lib/CryptoLibNG/
+CI/CD: /Users/runner/work/1/s/Ypsomed.mylife.Apps/UI/Ypsomed.mylife.Apps.UI.Droid/
+Target Framework: MonoAndroid v11.0 (Xamarin.Android v9.0 Support)
+Build-Typ: EU-Android-Release
+</code></pre>
+</article>
+      <footer class="site-footer">
+        <p><strong>Research only.</strong> Not a medical device. Insulin dosing errors can cause severe harm or death.</p>
+        <p>Based on <a href="https://github.com/SandraK82/ypsopump-research">SandraK82/ypsopump-research</a> (MIT). Enhanced fork by <a href="https://github.com/master3395/ypsopump-research">master3395</a>.</p>
+      </footer>
+    </div>
+  </div>
+</body>
+</html>

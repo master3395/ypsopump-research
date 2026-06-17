@@ -225,6 +225,17 @@ Der in Dokument 12 beschriebene Frida-Bypass scheiterte am Key Exchange, weil:
 - **CamAPS Updates**: Bei App-Updates erneut mit `-i com.android.vending` installieren.
 - **Key-Erneuerung**: Der Pumpen-Key wird alle 28 Tage erneuert. Solange Play Integrity besteht, geschieht dies automatisch.
 
+## Play Integrity client in newer builds (master3395 fork note)
+
+This document records testing on CamAPS FX **v1.4(190).111**. A separate APK comparison ([20 — CamAPS APK 189 vs 192](20-camaps-apk-189-vs-192.md)) found:
+
+| Build | Play Integrity client library |
+|-------|------------------------------|
+| 1.4(189).101 | 1.3.0 |
+| 1.4(192).101 | **1.6.0** |
+
+Build 192 also raises **minSdk from 31 to 33** (Android 13+). If you move to 192, re-verify any Magisk/TrickyStore setup against the newer integrity stack.
+
 ## Dateien und Downloads
 
 | Datei | Beschreibung |

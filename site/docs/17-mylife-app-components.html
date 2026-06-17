@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>17 — mylife App: Komponenten &amp; Dexcom Integration | YpsoPump Research</title>
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <a href="../index.html">YpsoPump Research</a>
+    <span class="tagline">#WeAreNotWaiting</span>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="Documentation"><h2>Pump and BLE</h2><ul><li><a href="01-hardware.html">01 — hardware</a></li><li><a href="02-ble-protocol.html">02 — ble protocol</a></li><li><a href="03-encryption.html">03 — encryption</a></li><li><a href="04-key-exchange.html">04 — key exchange</a></li></ul><h2>Backend and security</h2><ul><li><a href="05-backend-communication.html">05 — backend communication</a></li><li><a href="06-closed-loop-algorithm.html">06 — closed loop algorithm</a></li><li><a href="07-obfuscation.html">07 — obfuscation</a></li><li><a href="08-security-findings.html">08 — security findings</a></li><li><a href="09-bypass-options.html">09 — bypass options</a></li><li><a href="10-legal-analysis.html">10 — legal analysis</a></li></ul><h2>CamAPS FX</h2><ul><li><a href="11-camaps-algorithm-analysis.html">11 — camaps algorithm analysis</a></li><li><a href="12-camaps-sideload-bypass.html">12 — camaps sideload bypass</a></li><li><a href="13-play-integrity-bypass-success.html">13 — play integrity bypass success</a></li><li><a href="20-camaps-apk-189-vs-192.html">20 — camaps apk 189 vs 192</a></li><li><a href="21-camaps-liberty-availability.html">21 — camaps liberty availability</a></li><li><a href="22-cgm-error-codes-reference.html">22 — cgm error codes reference</a></li></ul><h2>mylife app</h2><ul><li><a href="14-mylife-app-overview.html">14 — mylife app overview</a></li><li><a href="15-mylife-app-security.html">15 — mylife app security</a></li><li><a href="16-mylife-app-proregia-protocol.html">16 — mylife app proregia protocol</a></li><li><a href="17-mylife-app-components.html" class="active">17 — mylife app components</a></li><li><a href="18-mylife-app-bypass-plan.html">18 — mylife app bypass plan</a></li><li><a href="19-key-lifecycle-pump-rotation.html">19 — key lifecycle pump rotation</a></li></ul><h2>Guides</h2><ul><li><a href="../guides/building-a-driver-app.html">building a driver app</a></li><li><a href="../guides/frida-key-extraction.html">frida key extraction</a></li><li><a href="../guides/ble-sniffing-setup.html">ble sniffing setup</a></li></ul><h2>More</h2><ul><li><a href="../index.html">Home</a></li><li><a href="../data/index.html">Data / CSV</a></li><li><a href="https://github.com/master3395/ypsopump-research">GitHub</a></li></ul></nav>
+    <div class="main">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / 17 — mylife App: Komponenten &amp; Dexcom Integration</div>
+      
+      <article class="content"><h1>17 — mylife App: Komponenten &amp; Dexcom Integration</h1>
+<h2>Android-Komponenten</h2>
+<h3>Activities (UI-Screens)</h3>
+<table>
+<thead>
+<tr>
+<th>Activity</th>
+<th>Funktion</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>cDexcomWizardMainActivity</code></td>
+<td>Dexcom CGM Setup-Wizard</td>
+</tr>
+<tr>
+<td><code>cDexcomDeviceSettingsActivity</code></td>
+<td>CGM Geräteeinstellungen</td>
+</tr>
+<tr>
+<td><code>cDexcomTransmitterSettingsActivity</code></td>
+<td>Transmitter-Konfiguration</td>
+</tr>
+<tr>
+<td><code>cDexcomTransmitterCalibrationActivity</code></td>
+<td>CGM Kalibrierung</td>
+</tr>
+<tr>
+<td><code>cDexcomDeviceAlertSettingsActivity</code></td>
+<td>Alarm-Einstellungen</td>
+</tr>
+<tr>
+<td><code>cDexcomAlertSettingsDetailsActivity</code></td>
+<td>Alarm-Details</td>
+</tr>
+<tr>
+<td><code>cDexcomAboutSettingsActivity</code></td>
+<td>Über den CGM-Sensor</td>
+</tr>
+<tr>
+<td><code>cDexcomDeviceHelpSettingsActivity</code></td>
+<td>CGM Hilfe</td>
+</tr>
+<tr>
+<td><code>cDexcomDeviceSafetyStatementsSettingsActivity</code></td>
+<td>Sicherheitshinweise</td>
+</tr>
+<tr>
+<td><code>cDexcomDeviceInstructionsSettingsActivity</code></td>
+<td>Anleitungen</td>
+</tr>
+<tr>
+<td><code>cDexcomDeviceHowToSettingsActivity</code></td>
+<td>How-To Guide</td>
+</tr>
+<tr>
+<td><code>cDexcomDeviceHowToVideoActivity</code></td>
+<td>Video-Anleitungen</td>
+</tr>
+<tr>
+<td><code>cDexcomDeviceShareStatusSettingsActivity</code></td>
+<td>Dexcom Share Status</td>
+</tr>
+<tr>
+<td><code>cDexcomDeviceShareFollowerSettingsActivity</code></td>
+<td>Share-Follower</td>
+</tr>
+<tr>
+<td><code>cDexcomDataConsentActivity</code></td>
+<td>Daten-Einwilligung</td>
+</tr>
+<tr>
+<td><code>cDexcomAccountSettingsActivity</code></td>
+<td>Dexcom-Konto</td>
+</tr>
+<tr>
+<td><code>cBolusDeliveryDoseActivity</code></td>
+<td><strong>mylife Dose Bolus-UI</strong></td>
+</tr>
+<tr>
+<td><code>cWebBrowserActivity</code></td>
+<td>In-App Browser</td>
+</tr>
+<tr>
+<td><code>WebAuthenticationCallbackActivity</code></td>
+<td>OAuth Callback</td>
+</tr>
+</tbody></table>
+<h3>Services</h3>
+<table>
+<thead>
+<tr>
+<th>Service</th>
+<th>Funktion</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>cBluetoothAndroidAppService</code></td>
+<td>Haupt-BLE Service (Pump + CGM)</td>
+</tr>
+<tr>
+<td><code>TransmitterBleService</code> (Dexcom)</td>
+<td>CGM Transmitter BLE</td>
+</tr>
+</tbody></table>
+<h3>Receivers</h3>
+<table>
+<thead>
+<tr>
+<th>Receiver</th>
+<th>Funktion</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>AlarmReceiver</code></td>
+<td>Wecker/Erinnerungen</td>
+</tr>
+<tr>
+<td><code>cBroadcastReceiver</code></td>
+<td>App-Events</td>
+</tr>
+<tr>
+<td><code>cPlatformEgvNotificationService_EgvResetReceiver</code></td>
+<td>CGM Reset</td>
+</tr>
+<tr>
+<td><code>cPlatformEgvNotificationService_ExactAlarmPermissionChangedReceiver</code></td>
+<td>Alarm-Permission</td>
+</tr>
+</tbody></table>
+<h2>Android Berechtigungen</h2>
+<pre><code class="language-xml">BLUETOOTH_SCAN           &lt;!-- BLE Scanning (Android 12+) --&gt;
+BLUETOOTH_CONNECT        &lt;!-- BLE Verbindung (Android 12+) --&gt;
+BLUETOOTH_ADMIN          &lt;!-- BLE Admin (bis Android 11) --&gt;
+BLUETOOTH                &lt;!-- BLE Basis (bis Android 11) --&gt;
+BLUETOOTH_PRIVILEGED     &lt;!-- BLE Privilegiert (bis Android 11) --&gt;
+INTERNET                 &lt;!-- Netzwerk --&gt;
+ACCESS_NETWORK_STATE     &lt;!-- Netzwerk-Status --&gt;
+CHANGE_NETWORK_STATE     &lt;!-- Netzwerk ändern --&gt;
+CAMERA                   &lt;!-- QR-Code Scan --&gt;
+ACCESS_COARSE_LOCATION   &lt;!-- BLE Scanning Location --&gt;
+ACCESS_FINE_LOCATION     &lt;!-- BLE Scanning Location --&gt;
+WAKE_LOCK                &lt;!-- Hintergrund-Service --&gt;
+FOREGROUND_SERVICE       &lt;!-- Foreground Service --&gt;
+FOREGROUND_SERVICE_CONNECTED_DEVICE  &lt;!-- BLE Foreground --&gt;
+FLASHLIGHT               &lt;!-- Taschenlampe --&gt;
+SCHEDULE_EXACT_ALARM     &lt;!-- Exakte Alarme --&gt;
+POST_NOTIFICATIONS       &lt;!-- Benachrichtigungen --&gt;
+VIBRATE                  &lt;!-- Vibrationsalarme --&gt;
+CHANGE_WIFI_STATE        &lt;!-- WiFi Steuerung --&gt;
+WRITE_EXTERNAL_STORAGE   &lt;!-- Datei-Export (bis Android 9) --&gt;
+READ_EXTERNAL_STORAGE    &lt;!-- Datei-Import --&gt;
+</code></pre>
+<h2>Dexcom CGM Integration</h2>
+<p>Die mylife App enthält eine <strong>vollständige Dexcom SDK-Integration</strong> über mehrere Assemblies:</p>
+<h3>Dexcom Assemblies</h3>
+<table>
+<thead>
+<tr>
+<th>Assembly</th>
+<th>Funktion</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>Dexcom.Android.Event.dll</code></td>
+<td>Events, Attestation, Integrity Manager</td>
+</tr>
+<tr>
+<td><code>Dexcom.Android.AppSupport.dll</code></td>
+<td>App-Support, BuildConfig</td>
+</tr>
+<tr>
+<td><code>Dexcom.Android.Transmitter.Libraries.dll</code></td>
+<td>BLE Transmitter-Kommunikation</td>
+</tr>
+<tr>
+<td><code>Dexcom.Android.CGM.System.dll</code></td>
+<td>CGM System-Management</td>
+</tr>
+<tr>
+<td><code>Dexcom.Android.Glucose.dll</code></td>
+<td>Glukose-Datenverarbeitung</td>
+</tr>
+<tr>
+<td><code>Dexcom.Android.GraphContainer.dll</code></td>
+<td>Glukose-Graphen</td>
+</tr>
+<tr>
+<td><code>Dexcom.Android.Insulin.dll</code></td>
+<td>Insulin-Daten (IOB etc.)</td>
+</tr>
+<tr>
+<td><code>Dexcom.Android.Cloud.Library.dll</code></td>
+<td>Dexcom Cloud/Share</td>
+</tr>
+<tr>
+<td><code>Dexcom.Android.Bulk.Core/Library.dll</code></td>
+<td>Bulk-Datenübertragung</td>
+</tr>
+<tr>
+<td><code>Dexcom.Android.Alert.Libraries.dll</code></td>
+<td>Alarm-System</td>
+</tr>
+<tr>
+<td><code>Dexcom.Android.Logging.Libraries.dll</code></td>
+<td>Dexcom Logging</td>
+</tr>
+<tr>
+<td><code>Dexcom.Cloud.Common.Service.dll</code></td>
+<td>Cloud API Service</td>
+</tr>
+</tbody></table>
+<h3>Dexcom Share Features</h3>
+<ul>
+<li>Remote Monitoring Sessions</li>
+<li>Follower Management</li>
+<li>Event Repository</li>
+<li>User Credentials Management</li>
+<li>Subscription Alert Settings</li>
+</ul>
+<h2>Cloud-Integration</h2>
+<h3>Ypsomed Cloud</h3>
+<p>Die App nutzt eigene Ypsomed Cloud-Services:</p>
+<pre><code>Ypsomed.mylife.Apps.Services.Cloud.dll      — Cloud-Sync
+Ypsomed.mylife.Apps.Services.RestCloud.dll   — REST API Client
+</code></pre>
+<h3>Libraries für Cloud-Kommunikation</h3>
+<table>
+<thead>
+<tr>
+<th>Library</th>
+<th>Verwendung</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>Square.Retrofit2.dll</code></td>
+<td>HTTP REST Client</td>
+</tr>
+<tr>
+<td><code>Square.OkHttp3.dll</code></td>
+<td>HTTP Transport</td>
+</tr>
+<tr>
+<td><code>Square.OkHttp3.LoggingInterceptor.dll</code></td>
+<td>HTTP Debug Logging</td>
+</tr>
+<tr>
+<td><code>Square.OkIO.dll</code></td>
+<td>IO Utilities</td>
+</tr>
+<tr>
+<td><code>Newtonsoft.Json.dll</code></td>
+<td>JSON Serialization</td>
+</tr>
+<tr>
+<td><code>RestSharp.dll</code></td>
+<td>Alternativer REST Client</td>
+</tr>
+<tr>
+<td><code>Refit.dll</code></td>
+<td>Type-safe REST Client</td>
+</tr>
+<tr>
+<td><code>Microsoft.IdentityModel.JsonWebTokens.dll</code></td>
+<td>JWT Handling</td>
+</tr>
+<tr>
+<td><code>System.IdentityModel.Tokens.Jwt.dll</code></td>
+<td>JWT Validation</td>
+</tr>
+</tbody></table>
+<h3>Authentifizierung</h3>
+<ul>
+<li>JWT-basiert (<code>Microsoft.IdentityModel.JsonWebTokens</code>)</li>
+<li>OAuth via WebAuthenticationCallbackActivity</li>
+<li>Dexcom Account Integration</li>
+</ul>
+<h2>Datenspeicherung</h2>
+<h3>SQLite (verschlüsselt)</h3>
+<pre><code>SQLite-net.dll          — ORM Layer
+SQLitePCLRaw.core.dll   — Raw SQLite
+libe_sqlite3.so         — Native SQLite (encrypted)
+Sodium.Core.dll         — sqlite3_key / sqlite3_rekey
+</code></pre>
+<p>Die lokale Datenbank ist mit <code>sqlite3_key</code> verschlüsselt (SQLCipher-ähnlich).</p>
+<h3>Encrypted Key Storage</h3>
+<pre><code class="language-csharp">EncryptedKeyStore        — Generischer verschlüsselter Key Store
+EncryptedAppKeyStore     — App-spezifischer Key Store
+  → GetKeyPairAsync()        // X25519 Keypair
+  → GetPumpPublicKeyAsync()  // Pump Curve25519 Key
+  → GetSharedKeyPumpAppAsync() // Derived Shared Key
+  → GetRebootCounter()
+  → GetAttestationKeyId()
+</code></pre>
+<h2>MVVM-Architektur (MvvmCross)</h2>
+<p>Die App nutzt das MvvmCross Framework für MVVM-Pattern:</p>
+<pre><code>MvvmCross.dll                          — Core Framework
+MvvmCross.DroidX.RecyclerView.dll      — Android RecyclerView
+MvvmCross.Plugin.File.dll              — File I/O
+MvvmCross.Plugin.Messenger.dll         — Event Messaging
+MvvmCross.Plugin.PictureChooser.dll    — Bild-Auswahl
+</code></pre>
+<h2>Zusätzliche Libraries</h2>
+<table>
+<thead>
+<tr>
+<th>Library</th>
+<th>Funktion</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>NodaTime.dll</code></td>
+<td>Erweiterte Zeitzonenbehandlung</td>
+</tr>
+<tr>
+<td><code>FFImageLoading.dll</code></td>
+<td>Async Image Loading</td>
+</tr>
+<tr>
+<td><code>Lottie.Android.dll</code></td>
+<td>Animationen</td>
+</tr>
+<tr>
+<td><code>Telerik.Xamarin.Android.Chart.dll</code></td>
+<td>Glukose-Charts</td>
+</tr>
+<tr>
+<td><code>SkiaSharp.dll</code></td>
+<td>2D-Grafik</td>
+</tr>
+<tr>
+<td><code>zxing.dll</code> / <code>ZXingNetMobile.dll</code></td>
+<td>QR/Barcode Scanning</td>
+</tr>
+<tr>
+<td><code>UrlBase64.dll</code></td>
+<td>URL-safe Base64</td>
+</tr>
+<tr>
+<td><code>PCLCrypto.dll</code></td>
+<td>Portable Crypto Abstractions</td>
+</tr>
+<tr>
+<td><code>Google.Protobuf.dll</code></td>
+<td>Protocol Buffers</td>
+</tr>
+<tr>
+<td><code>Grpc.Core.dll</code></td>
+<td>gRPC Client</td>
+</tr>
+</tbody></table>
+</article>
+      <footer class="site-footer">
+        <p><strong>Research only.</strong> Not a medical device. Insulin dosing errors can cause severe harm or death.</p>
+        <p>Based on <a href="https://github.com/SandraK82/ypsopump-research">SandraK82/ypsopump-research</a> (MIT). Enhanced fork by <a href="https://github.com/master3395/ypsopump-research">master3395</a>.</p>
+      </footer>
+    </div>
+  </div>
+</body>
+</html>

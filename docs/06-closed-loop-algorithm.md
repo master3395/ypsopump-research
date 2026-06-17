@@ -1,5 +1,7 @@
 # 06 — Closed-Loop Algorithm: Native Library Protection
 
+> **Note (master3395 fork):** Upstream analysis used CamAPS FX **v1.4(190).111**. For build **189 vs 192** differences (G7, Liberty, Play Integrity 1.6), see [20 — CamAPS APK comparison](20-camaps-apk-189-vs-192.md) and [21 — Liberty availability](21-camaps-liberty-availability.md).
+
 ## Overview
 
 The CamAPS FX closed-loop insulin dosing algorithm is protected by a **two-stage native library encryption system**. The algorithm itself runs as native code, never exposed as Java/Kotlin bytecode, and is additionally encrypted at rest within the APK.

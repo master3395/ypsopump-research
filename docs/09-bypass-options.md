@@ -1,5 +1,7 @@
 # 09 — Bypass Options: Practical Approaches
 
+> **Note (master3395 fork):** Strategies here address **pump BLE key exchange**, not **CamAPS Liberty** market gating. Liberty is server-controlled; see [21 — Liberty availability](21-camaps-liberty-availability.md).
+
 ## Overview
 
 This document describes practical approaches to establish independent BLE communication with the YpsoPump. The primary challenge is obtaining a valid shared key, as the 9-step key exchange requires backend cooperation. We present four strategies, from simplest to most complex.

@@ -1,0 +1,1233 @@
+<!DOCTYPE html>
+<html lang="nb">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CamAPS FX (mmol/L): sammenlign 189 vs 192 | YpsoPump Research</title>
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <a href="../index.html">YpsoPump Research</a>
+    <span class="tagline">#WeAreNotWaiting</span>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="Documentation"><h2>Pump and BLE</h2><ul><li><a href="01-hardware.html">01 — hardware</a></li><li><a href="02-ble-protocol.html">02 — ble protocol</a></li><li><a href="03-encryption.html">03 — encryption</a></li><li><a href="04-key-exchange.html">04 — key exchange</a></li></ul><h2>Backend and security</h2><ul><li><a href="05-backend-communication.html">05 — backend communication</a></li><li><a href="06-closed-loop-algorithm.html">06 — closed loop algorithm</a></li><li><a href="07-obfuscation.html">07 — obfuscation</a></li><li><a href="08-security-findings.html">08 — security findings</a></li><li><a href="09-bypass-options.html">09 — bypass options</a></li><li><a href="10-legal-analysis.html">10 — legal analysis</a></li></ul><h2>CamAPS FX</h2><ul><li><a href="11-camaps-algorithm-analysis.html">11 — camaps algorithm analysis</a></li><li><a href="12-camaps-sideload-bypass.html">12 — camaps sideload bypass</a></li><li><a href="13-play-integrity-bypass-success.html">13 — play integrity bypass success</a></li><li><a href="20-camaps-apk-189-vs-192.html" class="active">20 — camaps apk 189 vs 192</a></li><li><a href="21-camaps-liberty-availability.html">21 — camaps liberty availability</a></li><li><a href="22-cgm-error-codes-reference.html">22 — cgm error codes reference</a></li></ul><h2>mylife app</h2><ul><li><a href="14-mylife-app-overview.html">14 — mylife app overview</a></li><li><a href="15-mylife-app-security.html">15 — mylife app security</a></li><li><a href="16-mylife-app-proregia-protocol.html">16 — mylife app proregia protocol</a></li><li><a href="17-mylife-app-components.html">17 — mylife app components</a></li><li><a href="18-mylife-app-bypass-plan.html">18 — mylife app bypass plan</a></li><li><a href="19-key-lifecycle-pump-rotation.html">19 — key lifecycle pump rotation</a></li></ul><h2>Guides</h2><ul><li><a href="../guides/building-a-driver-app.html">building a driver app</a></li><li><a href="../guides/frida-key-extraction.html">frida key extraction</a></li><li><a href="../guides/ble-sniffing-setup.html">ble sniffing setup</a></li></ul><h2>More</h2><ul><li><a href="../index.html">Home</a></li><li><a href="../data/index.html">Data / CSV</a></li><li><a href="https://github.com/master3395/ypsopump-research">GitHub</a></li></ul><h2>On this page</h2><ul class="toc"><li><a href="#kort-oppsummert">Kort oppsummert</a></li><li><a href="#nytt-i-192-p-et-blikk" style="padding-left:1.25rem">Nytt i 192 på et blikk</a></li><li><a href="#versjon-og-plattform">Versjon og plattform</a></li><li><a href="#helt-nytt-i-192-finnes-ikke-i-189">Helt NYTT i 192 (finnes ikke i 189)</a></li><li><a href="#1-dexcom-g7-cgm-integrasjon-stor" style="padding-left:1.25rem">1. Dexcom G7 CGM-integrasjon (stor)</a></li><li><a href="#2-camaps-liberty-fullt-lukket-slyfe-stor" style="padding-left:1.25rem">2. CamAPS Liberty fullt lukket sløyfe (stor)</a></li><li><a href="#3-wearable-dexcom-klokke-ny-infrastruktur" style="padding-left:1.25rem">3. Wearable / Dexcom-klokke (ny infrastruktur)</a></li><li><a href="#4-tilgang-til-varslingspolicy-ny-tillatelse" style="padding-left:1.25rem">4. Tilgang til varslingspolicy (ny tillatelse)</a></li><li><a href="#endret-i-192-eksisterende-omrder">ENDRET i 192 (eksisterende områder)</a></li><li><a href="#5-android-os-kompatibilitet-og-minimumsversjon" style="padding-left:1.25rem">5. Android OS-kompatibilitet og minimumsversjon</a></li><li><a href="#6-sikkerhet-lisensiering" style="padding-left:1.25rem">6. Sikkerhet / lisensiering</a></li><li><a href="#7-appstrrelse-og-kodestruktur" style="padding-left:1.25rem">7. Appstørrelse og kodestruktur</a></li><li><a href="#8-avhengigheter-biblioteker-endret-ikke-nye-produktfunksjoner" style="padding-left:1.25rem">8. Avhengigheter / biblioteker (endret, ikke nye produktfunksjoner)</a></li><li><a href="#uendret-kjernefunksjoner-begge-versjoner">UENDRET kjernefunksjoner (begge versjoner)</a></li><li><a href="#funksjoner-ikke-funnet-som-nye-i-192">Funksjoner IKKE funnet som nye i 192</a></li><li><a href="#offentlig-endringslogg-vs-apk-analyse">Offentlig endringslogg vs APK-analyse</a></li><li><a href="#anbefalinger">Anbefalinger</a></li><li><a href="#cgm-feilkoder-libre-g6-g7">CGM-feilkoder (Libre, G6, G7)</a></li><li><a href="#to-lag-med-feilkoder" style="padding-left:1.25rem">To lag med feilkoder</a></li><li><a href="#antall-i-14192101" style="padding-left:1.25rem">Antall i 1.4(192).101</a></li><li><a href="#full-liste-brukerrettede-feilkoder-14192101" style="padding-left:1.25rem">Full liste: brukerrettede feilkoder (1.4(192).101)</a></li><li><a href="#full-liste-interne-varslings-enums-14192101" style="padding-left:1.25rem">Full liste: interne varslings-enums (1.4(192).101)</a></li><li><a href="#smali-stier-192-dekompilering" style="padding-left:1.25rem">Smali-stier (192-dekompilering)</a></li><li><a href="#slik-trekker-du-ut-repeterbart" style="padding-left:1.25rem">Slik trekker du ut (repeterbart)</a></li><li><a href="#eksporterte-lister-denne-underskelsen" style="padding-left:1.25rem">Eksporterte lister (denne undersøkelsen)</a></li><li><a href="#begrensninger" style="padding-left:1.25rem">Begrensninger</a></li><li><a href="#abbott-libre-numeriske-koder-2024-fellesliste-vs-camaps-koder" style="padding-left:1.25rem">Abbott Libre numeriske koder (2024 fellesliste) vs CamAPS-koder</a></li><li><a href="#companion-glooko-og-tredjepartsdeling-xdrip-nightscout">Companion, Glooko og tredjepartsdeling (xDrip+ / Nightscout)</a></li><li><a href="#kort-svar" style="padding-left:1.25rem">Kort svar</a></li><li><a href="#official-sharing-channels-189-og-192" style="padding-left:1.25rem">Official sharing channels (189 og 192)</a></li><li><a href="#hva-companion-deler-uendret-gdpr-tekst-189-vs-192" style="padding-left:1.25rem">Hva Companion deler (uendret GDPR-tekst 189 vs 192)</a></li><li><a href="#cloud-dto-felt-glooko-mylife-opplasting-diff-189-vs-192" style="padding-left:1.25rem">Cloud DTO-felt (Glooko / mylife-opplasting): diff 189 vs 192</a></li><li><a href="#hva-som-er-nytt-i-praksis-for-flgere-kun-192" style="padding-left:1.25rem">Hva som er *nytt i praksis* for følgere (kun 192)</a></li><li><a href="#anbefalte-stier-til-nightscout-xdrip-utenfor-camaps" style="padding-left:1.25rem">Anbefalte stier til Nightscout / xDrip+ (utenfor CamAPS)</a></li><li><a href="#underskelsesartefakter">Undersøkelsesartefakter</a></li></ul></nav>
+    <div class="main">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / CamAPS FX (mmol/L): sammenlign 189 vs 192</div>
+      <p class="lang-switch"><a href="20-camaps-apk-189-vs-192.html">English report</a></p>
+      <article class="content"><h1>CamAPS FX (mmol/L): sammenlign 189 vs 192</h1>
+<blockquote>
+<p><strong>Dokument 20</strong> | master3395 fork-tillegg | Undersøkelsesdato: 17/06/2026<br>Relatert: <a href="11-camaps-algorithm-analysis.html">11 — CamAPS-algoritme</a>, <a href="21-camaps-liberty-availability.html">21 — Liberty-tilgjengelighet</a>, <a href="22-cgm-error-codes-reference.html">22 — CGM-feilkoder</a></p>
+</blockquote>
+<p>Undersøkelsesdato: 17/06/2026 (oppdatert med CamAPS Liberty-funn)</p>
+<p>Sammenlign <strong>189 vs 192</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Versjon</th>
+<th>Kilde</th>
+<th>versionCode</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>189</strong></td>
+<td><code>1.4(189).101</code> (referanse-XAPK, eldre build)</td>
+<td>423</td>
+</tr>
+<tr>
+<td><strong>192</strong></td>
+<td><code>1.4(192).101</code> (Google Play, OnePlus 11)</td>
+<td>524</td>
+</tr>
+</tbody></table>
+<p>Metode: APKEditor-dekompilering, manifest-diff, strings/arrays-diff, smali-pakkeskanning, offentlige kilder.</p>
+<hr>
+<h2>Kort oppsummert</h2>
+<table>
+<thead>
+<tr>
+<th>Spørsmål</th>
+<th>Svar</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Er 192 en stor funksjonsoppdatering for brukere?</td>
+<td><strong>Yes.</strong> To hovednyheter: <strong>Dexcom G7 CGM-støtte</strong> og <strong>CamAPS Liberty</strong> (fullt lukket sløyfe).</td>
+</tr>
+<tr>
+<td>Er det bare feilrettinger/kompatibilitet?</td>
+<td><strong>Også ja.</strong> CamDiab/Ypsomed omtaler nylige Android-oppdateringer som <strong>OS-kompatibilitet</strong> og <strong>cybersikkerhet</strong>.</td>
+</tr>
+<tr>
+<td>Finnes CamAPS Liberty i 192?</td>
+<td><strong>Ja</strong> (kode + UI-tekster). Kan være <strong>skjult eller begrenset</strong> av land, pumpe, eller server-flagg til lokalt godkjent.</td>
+</tr>
+<tr>
+<td>Ny Companion / xDrip+ / Nightscout-eksport i 192?</td>
+<td><strong>Nei.</strong> Samme E2E Companion-kanal; bruk Glooko, Dexcom Follow eller parallell CGM-bro for NS/xDrip+.</td>
+</tr>
+<tr>
+<td>Finnes offisiell endringslogg 189→192?</td>
+<td><strong>Ingen detaljert offentlig endringslogg</strong> funnet.</td>
+</tr>
+<tr>
+<td>Kan 189 og 192 behandles som samme app?</td>
+<td><strong>Nei.</strong> 192 legger til G7-kode (+160 smali-filer), Liberty/FCL-kode (<code>com.camdiab.fx_alert.fxfcl</code>), og hever <strong>minSdk fra 31 til 33</strong>.</td>
+</tr>
+</tbody></table>
+<h3>Nytt i 192 på et blikk</h3>
+<table>
+<thead>
+<tr>
+<th>Funksjon</th>
+<th>189</th>
+<th>192</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Dexcom G7 CGM</td>
+<td>Nei</td>
+<td><strong>Ja</strong></td>
+</tr>
+<tr>
+<td>CamAPS Liberty (fullt lukket sløyfe)</td>
+<td>Nei</td>
+<td><strong>Yes</strong> (kode finnes; UI kan være regionsbegrenset)</td>
+</tr>
+<tr>
+<td>Dexcom G6 / Libre 3</td>
+<td>Ja</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Standard hybrid lukket sløyfe (Auto-modus)</td>
+<td>Ja</td>
+<td>Yes</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>Versjon og plattform</h2>
+<table>
+<thead>
+<tr>
+<th>Punkt</th>
+<th>189 (referanse)</th>
+<th>192 (din telefon)</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>versionName</td>
+<td>1.4(189).101</td>
+<td>1.4(192).101</td>
+</tr>
+<tr>
+<td>versionCode</td>
+<td>423</td>
+<td>524</td>
+</tr>
+<tr>
+<td>minSdk</td>
+<td>31 (Android 12+)</td>
+<td>33 (Android 13+)</td>
+</tr>
+<tr>
+<td>targetSdk</td>
+<td>35</td>
+<td>35</td>
+</tr>
+<tr>
+<td>CPU i pakke</td>
+<td>armeabi-v7a (32-bit)</td>
+<td>arm64-v8a (64-bit)</td>
+</tr>
+<tr>
+<td>Språk-split</td>
+<td>English (<code>en</code>)</td>
+<td>Norwegian (<code>nb</code>)</td>
+</tr>
+<tr>
+<td>Tetthet-split</td>
+<td>mdpi</td>
+<td>xxhdpi</td>
+</tr>
+<tr>
+<td>DEX-filer</td>
+<td>3</td>
+<td>4</td>
+</tr>
+<tr>
+<td>Smali-filer (ca.)</td>
+<td>16,094</td>
+<td>24,992</td>
+</tr>
+<tr>
+<td>Play Integrity-klient</td>
+<td>1.3.0</td>
+<td>1.6.0</td>
+</tr>
+<tr>
+<td>Kildetillit</td>
+<td>Tredjepartsspeil</td>
+<td>Google Play-uttrekk</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>Helt NYTT i 192 (finnes ikke i 189)</h2>
+<h3>1. Dexcom G7 CGM-integrasjon (stor)</h3>
+<p>Bevis: <strong>160 smali-filer</strong> under <code>com.camdiab.dexcomg7</code> og <code>com.dexcom.coresdk.g7*</code> i 192; <strong>null</strong> i 189.</p>
+<table>
+<thead>
+<tr>
+<th>Komponent</th>
+<th>189</th>
+<th>192</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>com.camdiab.dexcomg7.LoginActivity</code></td>
+<td>Mangler</td>
+<td><strong>Finnes</strong> (Dexcom-kontoinnlogging via web/UAM)</td>
+</tr>
+<tr>
+<td><code>com.camdiab.fx_alert.activities.SubmenuDexcomG7InfoActivity</code></td>
+<td>Mangler</td>
+<td><strong>Finnes</strong> (G7-hjelpeundermeny)</td>
+</tr>
+<tr>
+<td><code>com.dexcom.coresdk.g7txkit.g7core.G7CoreService</code></td>
+<td>Mangler</td>
+<td><strong>Finnes</strong> (bakgrunnstjeneste for G7-kjerne)</td>
+</tr>
+<tr>
+<td><code>com.dexcom.coresdk.cgmkit.watchcommunication.WatchDataListener</code></td>
+<td>Mangler</td>
+<td><strong>Finnes</strong></td>
+</tr>
+<tr>
+<td>Dexcom G7 Library</td>
+<td>Mangler</td>
+<td><strong>v1.0.0</strong> (in-app string)</td>
+</tr>
+<tr>
+<td>G7 FAQ i <code>arrays.xml</code></td>
+<td>Ingen G7-seksjon</td>
+<td><strong>Full G7 spørsmål/svar-blokk</strong> (paring, kalibrering, påsettingssteder, 10 dager + grace)</td>
+</tr>
+<tr>
+<td>G7-brukertekster</td>
+<td>Ingen</td>
+<td>Pairing code, login consent, switch-sensor logout flow, DG7X error codes, etc.</td>
+</tr>
+</tbody></table>
+<p><strong>Brukersynlige G7-funksjoner i 192:</strong></p>
+<ul>
+<li>Velg <strong>Dexcom G7</strong> som CGM-type (ved siden av G6 og Libre 3).</li>
+<li>Logg inn med <strong>Dexcom-konto</strong> i CamAPS.</li>
+<li>Par G7 med <strong>4-sifret paringskode</strong> (ikke G6-sensorkode).</li>
+<li>G7-spesifikk hjelp, feilsøking og kalibreringsmeldinger.</li>
+<li>Fabrikkskalibrert G7-flyt (annerledes enn G6 sensorkode-flyt).</li>
+</ul>
+<p><strong>Merk:</strong> 189 har cloud DTO enum <code>DEXCOM_G7</code> i <code>BaseDTO$CGMType</code> (kun backend-typing). Det finnes <strong>ingen kjørbar G7-stack</strong> i 189-APK.</p>
+<h3>2. CamAPS Liberty fullt lukket sløyfe (stor)</h3>
+<p><a href="https://camdiab.com/liberty">CamAPS Liberty</a> er CamDiabs <strong>fullt lukket sløyfe (FCL)</strong>-funksjon: når aktivert kan brukere <strong>hoppe over måltids-/snackbolus og karbohydrattelling</strong> mens Auto-modus er på. Valgfritt og ment for periodisk bruk.</p>
+<p>Bevis i 192: <strong>finnes</strong>. I 189: <strong>null</strong> Liberty-tekster, <strong>ingen</strong> <code>fxfcl</code>-pakke.</p>
+<table>
+<thead>
+<tr>
+<th>Komponent</th>
+<th>189</th>
+<th>192</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Package <code>com.camdiab.fx_alert.fxfcl</code> (<code>FxFcl.smali</code>)</td>
+<td>Mangler</td>
+<td><strong>Finnes</strong></td>
+</tr>
+<tr>
+<td>Modes (<code>FxFcl$Mode</code>)</td>
+<td>Mangler</td>
+<td><strong>OFF</strong>, <strong>ON</strong>, <strong>MIN</strong>, <strong>MAX</strong></td>
+</tr>
+<tr>
+<td>Brukertekster som nevner &quot;CamAPS Liberty&quot;</td>
+<td><strong>Ingen</strong></td>
+<td><strong>7 tekster</strong> (engelsk standard + norsk <code>nb</code>-split)</td>
+</tr>
+<tr>
+<td>Funksjonsflagg-nøkler</td>
+<td>Mangler</td>
+<td><code>camaps_liberty_ypso</code>, <code>camaps_liberty_dana</code></td>
+</tr>
+<tr>
+<td>Land/tilgjengelighets-gating</td>
+<td>Mangler</td>
+<td><code>setFxFclFeatureCountryAllowed</code>, <code>setFxFclFeatureCountryPersisting</code></td>
+</tr>
+<tr>
+<td>Telemetrinøkkel for bruk</td>
+<td>Mangler</td>
+<td><code>liberty_mode_usage</code></td>
+</tr>
+</tbody></table>
+<p><strong>App-tekster funnet i 192 (engelsk):</strong></p>
+<table>
+<thead>
+<tr>
+<th>Teksttema</th>
+<th>Oppsummering</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>CamAPS Liberty-opplæring</td>
+<td>Kort opplæring kreves før bruk</td>
+</tr>
+<tr>
+<td>Slå på Liberty</td>
+<td>Bekrefter at bruker er <strong>13+</strong> og <strong>ikke gravid</strong></td>
+</tr>
+<tr>
+<td>Liberty aktiv</td>
+<td>Ingen måltidsbolus nødvendig mens Auto-modus er på</td>
+</tr>
+<tr>
+<td>Liberty av</td>
+<td>Påminnelse om å bolusere for måltider og snacks igjen</td>
+</tr>
+<tr>
+<td>Liberty + Auto-modus</td>
+<td>Liberty <strong>fungerer bare når Auto-modus er på</strong></td>
+</tr>
+</tbody></table>
+<p><strong>Norske tekster</strong> følger også med (f.eks. <code>CamAPS Liberty-opplæring</code>, <code>CamAPS Liberty er aktiv</code>).</p>
+<p><strong>Brukersynlig oppførsel (når aktivert og tilgjengelig):</strong></p>
+<ul>
+<li>Slå Liberty av/på fra <strong>Innstillinger</strong> (jf. <a href="https://camdiab.com/liberty">CamDiab Liberty</a>).</li>
+<li>Mer proaktiv algoritme; ingen pre-meal-bolus eller karbohydrattelling under aktiv Liberty.</li>
+<li>Standard hybrid lukket sløyfe (manuelle boluser) er tilgjengelig når Liberty er av.</li>
+</ul>
+<p><strong>Innebygd vs synlig i appen din:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Situasjon</th>
+<th>Betydning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Liberty-bryter synlig i Innstillinger</td>
+<td>Funksjon aktivert for konto, pumpe og region</td>
+</tr>
+<tr>
+<td>Ingen bryter synlig</td>
+<td>Kode finnes i APK, men CamDiab har kanskje ikke sluppet den for ditt marked ennå</td>
+</tr>
+<tr>
+<td>189-APK</td>
+<td><strong>Ingen Liberty i det hele tatt</strong></td>
+</tr>
+</tbody></table>
+<p>CamDiabs nettside oppgir at utrulling <strong>venter på lokale markedsgodkjenninger</strong> for noen grupper (YpsoPump / Dana). 192-APK inneholder funksjonen; synlighet kan avhenge av server-flagg.</p>
+<h3>3. Wearable / Dexcom-klokke (ny infrastruktur)</h3>
+<table>
+<thead>
+<tr>
+<th>Punkt</th>
+<th>189</th>
+<th>192</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Permission <code>com.google.android.gms.permission.WEARABLE_INTERNAL</code></td>
+<td>Nei</td>
+<td><strong>Ja</strong></td>
+</tr>
+<tr>
+<td>Intent filters <code>com.google.android.gms.wearable.DATA_CHANGED</code> / <code>CHANNEL_EVENT</code></td>
+<td>Nei</td>
+<td><strong>Ja</strong></td>
+</tr>
+<tr>
+<td><code>WatchDataListener</code> service</td>
+<td>Nei</td>
+<td><strong>Ja</strong></td>
+</tr>
+</tbody></table>
+<p>Dette er <strong>Dexcom SDK-klokkekommunikasjon</strong>, ikke en ferdig frittstående CamAPS Wear OS-app. Støtter G7/Dexcom-økosystemet; CamDiab lister fortsatt Wear OS CamAPS som fremtidig veikart.</p>
+<h3>4. Tilgang til varslingspolicy (ny tillatelse)</h3>
+<table>
+<thead>
+<tr>
+<th>Tillatelse</th>
+<th>189</th>
+<th>192</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>android.permission.ACCESS_NOTIFICATION_POLICY</code></td>
+<td>Nei</td>
+<td><strong>Ja</strong></td>
+</tr>
+</tbody></table>
+<p>Lar sannsynligvis appen bruke Ikke forstyrr / varslingspolicy for alarmer. Ingen brukervis etikett funnet; antatt for bedre alarmlevering på nyere Android.</p>
+<hr>
+<h2>ENDRET i 192 (eksisterende områder)</h2>
+<h3>5. Android OS-kompatibilitet og minimumsversjon</h3>
+<table>
+<thead>
+<tr>
+<th>Endring</th>
+<th>Detalj</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>minSdk <strong>31 → 33</strong></td>
+<td><strong>Android 12 støttes ikke lenger</strong> på 192. Krever Android 13+.</td>
+</tr>
+<tr>
+<td>Regulatorisk kommunikasjon</td>
+<td>Feltsikkerhetsmeldinger og <a href="https://camdiab.com/notifications">CamDiab notifications</a> understreker <strong>smarttelefon + OS-kompatibilitet</strong> med CGM og pumpe.</td>
+</tr>
+<tr>
+<td>Brukerrapporter</td>
+<td><a href="https://insulinclub.de/index.php?thread/37192-camaps-fx-update-x-195-ios-x-192-android/">Insulinclub.de</a> users report 192 running on Android 15 without issues.</td>
+</tr>
+<tr>
+<td>Din enhet</td>
+<td>Uttrekk fra <strong>OnePlus 11, Android 16</strong> (CPH2449).</td>
+</tr>
+</tbody></table>
+<p>CamDiab publiserer <strong>ikke</strong> en punktvis &quot;Android 16 fixes&quot;-liste for build 192. Oppdateringen beskrives best som <strong>å holde appen i gang på gjeldende OS-versjoner</strong>.</p>
+<h3>6. Sikkerhet / lisensiering</h3>
+<table>
+<thead>
+<tr>
+<th>Punkt</th>
+<th>189</th>
+<th>192</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Play Integrity-klient</td>
+<td>1.3.0</td>
+<td><strong>1.6.0</strong></td>
+</tr>
+<tr>
+<td><code>com.pairip.licensecheck.LicenseContentProvider</code></td>
+<td>Finnes</td>
+<td><strong>Fjernet</strong></td>
+</tr>
+<tr>
+<td><code>com.android.vending.CHECK_LICENSE</code></td>
+<td>Finnes</td>
+<td>Finnes</td>
+</tr>
+</tbody></table>
+<p>192 oppdaterer anti-tamper / Play-lisensintegrasjon. Ikke brukersynlig, men relevant for installasjonskilde-validering.</p>
+<h3>7. Appstørrelse og kodestruktur</h3>
+<table>
+<thead>
+<tr>
+<th>Måltall</th>
+<th>189</th>
+<th>192</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Total smali files</td>
+<td>16,094</td>
+<td>24,992 (+55%)</td>
+</tr>
+<tr>
+<td>DEX count</td>
+<td>3</td>
+<td>4</td>
+</tr>
+<tr>
+<td>APK-størrelse</td>
+<td>~26 MB (XAPK total)</td>
+<td>~49 MB</td>
+</tr>
+</tbody></table>
+<p>Vekst skyldes hovedsakelig <strong>G7 SDK</strong>, <strong>CamAPS Liberty (FCL)</strong>, oppdaterte avhengigheter og arm64/xxhdpi-ressurser (189 XAPK-pakken er også mindre/feil arkitektur).</p>
+<h3>8. Avhengigheter / biblioteker (endret, ikke nye produktfunksjoner)</h3>
+<p>Obfuskasjonspakke-omdøping (<code>b.*</code> → <code>a.*</code> for mange støttestubber) er <strong>bygge-artefakt</strong>, ikke brukerfunksjon.</p>
+<p>Google Play Services-komponenter oppdatert (f.eks. <code>GoogleApiActivity</code> registrert i 192).</p>
+<hr>
+<h2>UENDRET kjernefunksjoner (begge versjoner)</h2>
+<p>Dette finnes i <strong>begge</strong> 189 og 192:</p>
+<table>
+<thead>
+<tr>
+<th>Funksjonsområde</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Hybrid lukket sløyfe (Auto-modus av/på)</td>
+<td>Samme produkt (standard HCL uendret)</td>
+</tr>
+<tr>
+<td>CamAPS Liberty (fullt lukket sløyfe, valgfritt)</td>
+<td><strong>Kun 192</strong> (se avsnitt over)</td>
+</tr>
+<tr>
+<td>Dexcom <strong>G6</strong> CGM support</td>
+<td>Finnes in both</td>
+</tr>
+<tr>
+<td>FreeStyle <strong>Libre 3</strong> (+ Plus-tekster i 192)</td>
+<td>Finnes in both</td>
+</tr>
+<tr>
+<td>YpsoPump / Dana pumpe-tilkobling</td>
+<td>Samme app-familie</td>
+</tr>
+<tr>
+<td>SMS-følgere (opptil 5)</td>
+<td>Samme</td>
+</tr>
+<tr>
+<td>CamAPS Companion fjernovervåking</td>
+<td>Samme</td>
+</tr>
+<tr>
+<td>Boluskalkulator, måltider, personlige glukosemål</td>
+<td>Samme</td>
+</tr>
+<tr>
+<td>Glooko / sky-opplasting</td>
+<td>Samme</td>
+</tr>
+<tr>
+<td>Kjernetillatelser (Bluetooth, posisjon, SMS, NFC, osv.)</td>
+<td>Samme set, plus 192 additions above</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>Funksjoner IKKE funnet som nye i 192</h2>
+<p>Søkt, men <strong>ikke</strong> dokumentert som nye brukerfunksjoner i 192 vs 189:</p>
+<table>
+<thead>
+<tr>
+<th>Rykte / sjekket</th>
+<th>Resultat</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Full CamAPS Wear OS-app</td>
+<td><strong>Ikke i 192</strong> (kun Dexcom-klokkelytter)</td>
+</tr>
+<tr>
+<td>Health Connect-integrasjon</td>
+<td>Kun bibliotekreferanser i 192 smali; <strong>ingen Health Connect-tillatelse i manifest</strong></td>
+</tr>
+<tr>
+<td>Nye pumpertyper</td>
+<td>Ikke funnet</td>
+</tr>
+<tr>
+<td>CamAPS Liberty (FCL)</td>
+<td><strong>Finnes in 192</strong>; absent in 189 (see section 2)</td>
+</tr>
+<tr>
+<td>Generelle algoritme-/målendringer utenfor Liberty</td>
+<td>Ikke dokumentert separat i offentlige kilder</td>
+</tr>
+<tr>
+<td>Libre 3 Plus kun i 192</td>
+<td>Streng finnes i 192; Libre 3-familien var allerede i 189</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>Offentlig endringslogg vs APK-analyse</h2>
+<table>
+<thead>
+<tr>
+<th>Kilde</th>
+<th>Hva den sier om 189 → 192</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><a href="https://camdiab.com/notifications">CamDiab notifications</a></td>
+<td>Nye versjoner for <strong>OS-kompatibilitet</strong> og <strong>cybersikkerhet</strong>; versjoner under 1.4(190) utgår fra 31/03/2026</td>
+</tr>
+<tr>
+<td><a href="https://www.tga.gov.au/safety/recalls-and-other-market-actions/market-actions/mylife-camaps-fx-app">TGA market action</a></td>
+<td>Programvareoppdatering for <strong>nyere smarttelefon-OS</strong></td>
+</tr>
+<tr>
+<td><a href="https://insulinclub.de/index.php?thread/37192-camaps-fx-update-x-195-ios-x-192-android/">Insulinclub.de</a></td>
+<td>192 rulles ut på Play; forskjøvet etter app-variant/region</td>
+</tr>
+<tr>
+<td><a href="https://pieterdebruijn.nl/camaps-fx-development-and-changelog/">Pieter de Bruijn changelog</a></td>
+<td><strong>Ikke oppdatert</strong> etter 2024; ingen 189/192-poster</td>
+</tr>
+<tr>
+<td><a href="https://camdiab.com/liberty">CamAPS Liberty</a></td>
+<td>FCL innebygd i CamAPS FX; markedsutrulling <strong>venter</strong> for noen pumpe/region-kombinasjoner</td>
+</tr>
+<tr>
+<td><strong>Denne APK-diffen</strong></td>
+<td><strong>Dexcom G7</strong> og <strong>CamAPS Liberty</strong> er de tydelige funksjonsnyhetene i 192</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>Anbefalinger</h2>
+<table>
+<thead>
+<tr>
+<th>Mål</th>
+<th>Bruk</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Kjøre på OnePlus 11 / Android 13+</td>
+<td><strong>Kun 192</strong></td>
+</tr>
+<tr>
+<td>Bruke Dexcom G7-sensor</td>
+<td><strong>Kun 192</strong></td>
+</tr>
+<tr>
+<td>Bruke CamAPS Liberty (FCL, uten måltidsbolus)</td>
+<td><strong>Kun 192</strong> (hvis bryter vises for region/pumpe)</td>
+</tr>
+<tr>
+<td>Beholde Play-signert sikkerhetskopi</td>
+<td><strong>4 split-APK-er</strong> fra telefonuttrekk</td>
+</tr>
+<tr>
+<td>Referanse / ikke installer</td>
+<td>Eldre <strong>189</strong> XAPK (feil CPU-arkitektur + eldre build)</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>CGM-feilkoder (Libre, G6, G7)</h2>
+<p><strong>Ja:</strong> alle brukerrettede støttekoder og interne varslings-enums kan hentes fra dekompilert APK. CamAPS har <strong>ikke</strong> offentlig feilkodehåndbok; APK <code>strings.xml</code> og <code>HandleErrorMessage$NotificationCodes</code> smali er autoritative kilder.</p>
+<h3>To lag med feilkoder</h3>
+<table>
+<thead>
+<tr>
+<th>Lag</th>
+<th>Hva det er</th>
+<th>Hvor du finner det</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Brukerrettede støttekoder</strong></td>
+<td>Korte ID-er i varsler (f.eks. <code>LBR012</code>, <code>DDC045</code>, <code>DG7X023</code>)</td>
+<td><code>resources/package_1/res/values/strings.xml</code></td>
+</tr>
+<tr>
+<td><strong>Interne varslings-enums</strong></td>
+<td>Utviklernavn (f.eks. <code>LS3_MSG_SIGNAL_LOSS</code>, <code>DX_MSG_PAIRING_FAILED</code>)</td>
+<td><code>HandleErrorMessage$NotificationCodes.smali</code> per CGM package</td>
+</tr>
+</tbody></table>
+<p>Brukermeldinger for interne feil er mest generiske (&quot;Intern feil XXXXX. Start smartenheten på nytt.&quot;). Koden er nyttig ved kontakt med CamDiab / mylife-støtte.</p>
+<h3>Antall i 1.4(192).101</h3>
+<table>
+<thead>
+<tr>
+<th>CGM</th>
+<th>Strengprefiks</th>
+<th>Brukerrettede koder</th>
+<th>Interne enum-konstanter</th>
+<th>189 vs 192</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>FreeStyle Libre 3</strong></td>
+<td><code>LBR###</code></td>
+<td><strong>25</strong> (<code>LBR001</code>–<code>LBR025</code>)</td>
+<td><strong>44</strong> (<code>LS3_*</code> in <code>uk.ac.cam.ap.libre.error</code>)</td>
+<td>Samme in 189</td>
+</tr>
+<tr>
+<td><strong>Dexcom G6</strong></td>
+<td><code>DDC###</code> + <code>DCI###</code></td>
+<td><strong>81</strong> + <strong>82</strong> = <strong>163</strong></td>
+<td><strong>59</strong> (<code>DX_*</code> in <code>uk.ac.cam.ap.dexcom.error</code>)</td>
+<td>Samme in 189</td>
+</tr>
+<tr>
+<td><strong>Dexcom G7</strong></td>
+<td><code>DG7X###</code></td>
+<td><strong>18</strong> (<code>DG7X001</code>–<code>DG7X041</code>, non-contiguous)</td>
+<td><strong>44</strong> (<code>DX_*</code> in <code>com.camdiab.dexcomg7.alerts</code>)</td>
+<td><strong>Kun 192</strong> (0 in 189)</td>
+</tr>
+</tbody></table>
+<p><strong>G7 brukerrettede koder (192):</strong> DG7X001, DG7X002, DG7X003, DG7X023, DG7X024, DG7X025, DG7X026, DG7X027, DG7X028, DG7X029, DG7X030, DG7X031, DG7X032, DG7X033, DG7X034, DG7X037, DG7X038, DG7X041.</p>
+<p><strong>Libre brukerrettede koder (begge builds):</strong> LBR001 til LBR025.</p>
+<p><strong>G6 brukerrettede koder (begge builds):</strong> DDC001 til DDC081 and DCI001 til DCI082 (sekvensielle blokker). Samme meldingsmønster unntatt der det står annet under.</p>
+<h3>Full liste: brukerrettede feilkoder (1.4(192).101)</h3>
+<p>Source: <code>to-do/CGM-ERROR-CODES-192.csv</code>. Libre and G6 codes are <strong>identical in 189 and 192</strong>. G7 codes are <strong>Kun 192</strong>.</p>
+<h4>FreeStyle Libre 3 (<code>LBR###</code>) — 25 codes, 189 og 192</h4>
+<table>
+<thead>
+<tr>
+<th>Kode</th>
+<th>Melding (norsk)</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>LBR001</td>
+<td>Intern feil LBR001. Start smartenheten på nytt.</td>
+</tr>
+<tr>
+<td>LBR002</td>
+<td>Intern feil LBR002. Start smartenheten på nytt.</td>
+</tr>
+<tr>
+<td>LBR003</td>
+<td>Intern feil LBR003. Start smartenheten på nytt.</td>
+</tr>
+<tr>
+<td>LBR004</td>
+<td>Intern feil LBR004. Start smartenheten på nytt.</td>
+</tr>
+<tr>
+<td>LBR005</td>
+<td>Intern feil LBR005. Start smartenheten på nytt.</td>
+</tr>
+<tr>
+<td>LBR006</td>
+<td>Intern feil LBR006. Start smartenheten på nytt.</td>
+</tr>
+<tr>
+<td>LBR007</td>
+<td>Intern feil LBR007. Start smartenheten på nytt.</td>
+</tr>
+<tr>
+<td>LBR008</td>
+<td>Intern feil LBR008. Start smartenheten på nytt.</td>
+</tr>
+<tr>
+<td>LBR009</td>
+<td>Intern feil LBR009. Start smartenheten på nytt.</td>
+</tr>
+<tr>
+<td>LBR010</td>
+<td>Intern feil LBR010. Start smartenheten på nytt.</td>
+</tr>
+<tr>
+<td>LBR011</td>
+<td>Intern feil LBR011. Start smartenheten på nytt.</td>
+</tr>
+<tr>
+<td>LBR012</td>
+<td>Intern feil LBR012. Start smartenheten på nytt.</td>
+</tr>
+<tr>
+<td>LBR013</td>
+<td>Intern feil LBR013. Start smartenheten på nytt.</td>
+</tr>
+<tr>
+<td>LBR014</td>
+<td>Intern feil LBR014. Start smartenheten på nytt.</td>
+</tr>
+<tr>
+<td>LBR015</td>
+<td>Intern feil LBR015. Start smartenheten på nytt.</td>
+</tr>
+<tr>
+<td>LBR016</td>
+<td>Intern feil LBR016. Start smartenheten på nytt</td>
+</tr>
+<tr>
+<td>LBR017</td>
+<td>Intern feil LBR017. Start smartenheten på nytt.</td>
+</tr>
+<tr>
+<td>LBR018</td>
+<td>Intern feil LBR018. Start smartenheten på nytt.</td>
+</tr>
+<tr>
+<td>LBR019</td>
+<td>Intern feil LBR019. Start smartenheten på nytt.</td>
+</tr>
+<tr>
+<td>LBR020</td>
+<td>Intern feil LBR020. Start smartenheten på nytt.</td>
+</tr>
+<tr>
+<td>LBR021</td>
+<td>Intern feil LBR021. Start smartenheten på nytt.</td>
+</tr>
+<tr>
+<td>LBR022</td>
+<td>Intern feil LBR022. Start smartenheten på nytt.</td>
+</tr>
+<tr>
+<td>LBR023</td>
+<td>Intern feil LBR023. Start smartenheten på nytt.</td>
+</tr>
+<tr>
+<td>LBR024</td>
+<td>Intern feil LBR024. Start smartenheten på nytt.</td>
+</tr>
+<tr>
+<td>LBR025</td>
+<td>Intern feil LBR025. Start smartenheten på nytt.</td>
+</tr>
+</tbody></table>
+<p>Norsk locale (<code>nb</code>): <code>Intern feil LBRnnn. Start smartenheten på nytt.</code></p>
+<h4>Dexcom G7 (<code>DG7X###</code>) — 18 codes, <strong>Kun 192</strong></h4>
+<table>
+<thead>
+<tr>
+<th>Kode</th>
+<th>Melding (norsk)</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>DG7X001</td>
+<td>Intern feil DG7X001. Start smartenheten på nytt.</td>
+</tr>
+<tr>
+<td>DG7X002</td>
+<td>Intern feil DG7X002. Start smartenheten på nytt.</td>
+</tr>
+<tr>
+<td>DG7X003</td>
+<td>Intern feil DG7X003. Start smartenheten på nytt.</td>
+</tr>
+<tr>
+<td>DG7X023</td>
+<td>Intern feil DG7X023. Start smartenheten på nytt.</td>
+</tr>
+<tr>
+<td>DG7X024</td>
+<td>Intern feil DG7X024. Start smartenheten på nytt.</td>
+</tr>
+<tr>
+<td>DG7X025</td>
+<td>Intern feil DG7X025. Start smartenheten på nytt.</td>
+</tr>
+<tr>
+<td>DG7X026</td>
+<td>Intern feil DG7X026. Start smartenheten på nytt.</td>
+</tr>
+<tr>
+<td>DG7X027</td>
+<td>Intern feil DG7X027. Start smartenheten på nytt</td>
+</tr>
+<tr>
+<td>DG7X028</td>
+<td>Intern feil DG7X028. Start smartenheten på nytt.</td>
+</tr>
+<tr>
+<td>DG7X029</td>
+<td>Intern feil DG7X029. Start smartenheten på nytt.</td>
+</tr>
+<tr>
+<td>DG7X030</td>
+<td>Intern feil DG7X030. Start smartenheten på nytt.</td>
+</tr>
+<tr>
+<td>DG7X031</td>
+<td>Intern feil DG7X031. Start smartenheten på nytt.</td>
+</tr>
+<tr>
+<td>DG7X032</td>
+<td>Intern feil DG7X032. Start smartenheten på nytt.</td>
+</tr>
+<tr>
+<td>DG7X033</td>
+<td>Intern feil DG7X033. Start smartenheten på nytt.</td>
+</tr>
+<tr>
+<td>DG7X034</td>
+<td>Intern feil DG7X034. Start smartenheten på nytt.</td>
+</tr>
+<tr>
+<td>DG7X037</td>
+<td>Intern feil DG7X037. Start smartenheten på nytt.</td>
+</tr>
+<tr>
+<td>DG7X038</td>
+<td>Intern feil DG7X038. Start smartenheten på nytt.</td>
+</tr>
+<tr>
+<td>DG7X041</td>
+<td>En feil DG7X041 har oppstått. Start appen på nytt eller start smartenheten på nytt.</td>
+</tr>
+</tbody></table>
+<h4>Dexcom G6 (<code>DDC###</code> + <code>DCI###</code>) — 163 codes, 189 og 192</h4>
+<p>Alle koder bruker: <strong>Intern feil {kode}. Start smartenheten på nytt.</strong></p>
+<p><strong>DDC-blokk (81 koder):</strong> DDC001, DDC002, DDC003, DDC004, DDC005, DDC006, DDC007, DDC008, DDC009, DDC010, DDC011, DDC012, DDC013, DDC014, DDC015, DDC016, DDC017, DDC018, DDC019, DDC020, DDC021, DDC022, DDC023, DDC024, DDC025, DDC026, DDC027, DDC028, DDC029, DDC030, DDC031, DDC032, DDC033, DDC034, DDC035, DDC036, DDC037, DDC038, DDC039, DDC040, DDC041, DDC042, DDC043, DDC044, DDC045, DDC046, DDC047, DDC048, DDC049, DDC050, DDC051, DDC052, DDC053, DDC054, DDC055, DDC056, DDC057, DDC058, DDC059, DDC060, DDC061, DDC062, DDC063, DDC064, DDC065, DDC066, DDC067, DDC068, DDC069, DDC070, DDC071, DDC072, DDC073, DDC074, DDC075, DDC076, DDC077, DDC078, DDC079, DDC080, DDC081</p>
+<p><strong>DCI-blokk (82 koder):</strong> DCI001, DCI002, DCI003, DCI004, DCI005, DCI006, DCI007, DCI008, DCI009, DCI010, DCI011, DCI012, DCI013, DCI014, DCI015, DCI016, DCI017, DCI018, DCI019, DCI020, DCI021, DCI022, DCI023, DCI024, DCI025, DCI026, DCI027, DCI028, DCI029, DCI030, DCI031, DCI032, DCI033, DCI034, DCI035, DCI036, DCI037, DCI038, DCI039, DCI040, DCI041, DCI042, DCI043, DCI044, DCI045, DCI046, DCI047, DCI048, DCI049, DCI050, DCI051, DCI052, DCI053, DCI054, DCI055, DCI056, DCI057, DCI058, DCI059, DCI060, DCI061, DCI062, DCI063, DCI064, DCI065, DCI066, DCI067, DCI068, DCI069, DCI070, DCI071, DCI072, DCI073, DCI074, DCI075, DCI076, DCI077, DCI078, DCI079, DCI080, DCI081, DCI082</p>
+<h3>Full liste: interne varslings-enums (1.4(192).101)</h3>
+<p>Source: <code>to-do/CGM-NOTIFICATION-ENUMS-192.csv</code>. Used in logs and developer mapping; not always shown to users. Libre and G6 enums are <strong>identical in 189 and 192</strong>. G7 enums are <strong>Kun 192</strong>.</p>
+<h4>Libre (<code>LS3_*</code>) — 44 konstanter</h4>
+<p><code>LS3_DB_CONTEXT_NULL</code>, <code>LS3_DB_CREATION_FAIL</code>, <code>LS3_DB_DELETE_FAIL</code>, <code>LS3_DB_DEL_EXCEPTION</code>, <code>LS3_DB_DEL_EXCEPTION2</code>, <code>LS3_DB_DEL_EXCEPTION3</code>, <code>LS3_DB_GET_EXCEPTION1</code>, <code>LS3_DB_GET_EXCEPTION2</code>, <code>LS3_DB_INS_EXCEPTION</code>, <code>LS3_DB_INS_FAILED</code>, <code>LS3_DB_INTEGRITY_FAIL</code>, <code>LS3_DB_OPEN_EXCEPTION</code>, <code>LS3_HANDLER_STUCK</code>, <code>LS3_MSG_BAD_IDX_1</code>, <code>LS3_MSG_BAD_IDX_2</code>, <code>LS3_MSG_BAD_IDX_3</code>, <code>LS3_MSG_BAD_IDX_4</code>, <code>LS3_MSG_CRC_CALC</code>, <code>LS3_MSG_CRC_CHECK</code>, <code>LS3_MSG_CURR_SENSOR</code>, <code>LS3_MSG_EXC_MSG_ACK</code>, <code>LS3_MSG_EXC_SAVE_INFO</code>, <code>LS3_MSG_FALL_RATE</code>, <code>LS3_MSG_HIGH</code>, <code>LS3_MSG_LOW</code>, <code>LS3_MSG_NO_READINGS</code>, <code>LS3_MSG_RISE_RATE</code>, <code>LS3_MSG_SENSOR_2HOURS</code>, <code>LS3_MSG_SENSOR_30MINUTES</code>, <code>LS3_MSG_SENSOR_6HOURS</code>, <code>LS3_MSG_SENSOR_EXPIRED</code>, <code>LS3_MSG_SENSOR_FAILED</code>, <code>LS3_MSG_SENSOR_WARM_UP</code>, <code>LS3_MSG_SIGNAL_LOSS</code>, <code>LS3_MSG_START_SESS_ERR</code>, <code>LS3_MSG_TEMP_HIGH</code>, <code>LS3_MSG_TEMP_LOW</code>, <code>LS3_MSG_UNKNOWN_ERROR</code>, <code>LS3_MSG_URGENT_LOW</code>, <code>LS3_MSG_URGENT_LOW_SOON</code>, <code>LS3_MSG_VITAMIN_C</code>, <code>LS3_MSG_WAKELOCK_ERROR</code>, <code>LS3_MSG_WRONG_PIN</code>, <code>LS3_TOO_BIG_GAP</code></p>
+<h4>Dexcom G6 (<code>DX_*</code>) — 59 konstanter</h4>
+<p><code>DX_DB_CIPHER</code>, <code>DX_DB_CONTEXT_NULL</code>, <code>DX_DB_CREATION_FAIL</code>, <code>DX_DB_DELETE_FAIL</code>, <code>DX_DB_DEL_EXCEPTION</code>, <code>DX_DB_DEL_EXCEPTION2</code>, <code>DX_DB_DEL_EXCEPTION3</code>, <code>DX_DB_GET_EXCEPTION1</code>, <code>DX_DB_GET_EXCEPTION2</code>, <code>DX_DB_INS_EXCEPTION</code>, <code>DX_DB_INS_FAILED</code>, <code>DX_DB_INTEGRITY_FAIL</code>, <code>DX_DB_OPEN_EXCEPTION</code>, <code>DX_END_OF_LIFE</code>, <code>DX_MSG_1ST_CALIB</code>, <code>DX_MSG_2ND_CALIB</code>, <code>DX_MSG_CALIB_ERR</code>, <code>DX_MSG_CRC_CALC</code>, <code>DX_MSG_CRC_CHECK</code>, <code>DX_MSG_CYCLE_BLUETOOTH</code>, <code>DX_MSG_END_SESS_ERR</code>, <code>DX_MSG_EXCEPTION</code>, <code>DX_MSG_EXC_MSG_ACK</code>, <code>DX_MSG_FALL_RATE</code>, <code>DX_MSG_GATT_ERROR_NOTI</code>, <code>DX_MSG_HIGH</code>, <code>DX_MSG_INVALID_BG</code>, <code>DX_MSG_LOW</code>, <code>DX_MSG_NEXT_CALIB</code>, <code>DX_MSG_NEXT_NEW_CALIB</code>, <code>DX_MSG_NO_READINGS</code>, <code>DX_MSG_PAIRED</code>, <code>DX_MSG_PAIRING</code>, <code>DX_MSG_PAIRING_FAILED</code>, <code>DX_MSG_PLANNED_CALIB</code>, <code>DX_MSG_RESTART_APP</code>, <code>DX_MSG_RISE_RATE</code>, <code>DX_MSG_SCAN_STUCK</code>, <code>DX_MSG_SENSOR_2HOURS</code>, <code>DX_MSG_SENSOR_30MINUTES</code>, <code>DX_MSG_SENSOR_6HOURS</code>, <code>DX_MSG_SENSOR_EXPIRED</code>, <code>DX_MSG_SENSOR_FAILED</code>, <code>DX_MSG_SENSOR_RESTART</code>, <code>DX_MSG_SENSOR_WARM_UP</code>, <code>DX_MSG_SIGNAL_LOSS</code>, <code>DX_MSG_SN_NAME_WRONG</code>, <code>DX_MSG_START_SESS_ERR</code>, <code>DX_MSG_TRANS_14DAYS</code>, <code>DX_MSG_TRANS_22DAYS</code>, <code>DX_MSG_TRANS_FAILED</code>, <code>DX_MSG_TRANS_LAST_END</code>, <code>DX_MSG_TRANS_LAST_START</code>, <code>DX_MSG_TRANS_LOW_BATTERY</code>, <code>DX_MSG_TRANS_TAKEN</code>, <code>DX_MSG_UNKNOWN_ERROR</code>, <code>DX_MSG_URGENT_LOW</code>, <code>DX_MSG_URGENT_LOW_SOON</code>, <code>DX_MSG_WAKELOCK_ERROR</code></p>
+<h4>Dexcom G7 (<code>DX_*</code>, egen pakke) — 44 konstanter, <strong>Kun 192</strong></h4>
+<p><code>DX_DB_CONTEXT_NULL</code>, <code>DX_DB_CREATION_FAIL</code>, <code>DX_DB_DELETE_FAIL</code>, <code>DX_DB_DEL_EXCEPTION</code>, <code>DX_DB_DEL_EXCEPTION2</code>, <code>DX_DB_DEL_EXCEPTION3</code>, <code>DX_DB_GET_EXCEPTION1</code>, <code>DX_DB_GET_EXCEPTION2</code>, <code>DX_DB_INS_EXCEPTION</code>, <code>DX_DB_INS_FAILED</code>, <code>DX_DB_INTEGRITY_FAIL</code>, <code>DX_DB_OPEN_EXCEPTION</code>, <code>DX_INVALID_TEST_CODE</code>, <code>DX_MSG_BAD_CALIBRATION</code>, <code>DX_MSG_CRC_CALC</code>, <code>DX_MSG_CRC_CHECK</code>, <code>DX_MSG_EXC_MSG_ACK</code>, <code>DX_MSG_FALL_RATE</code>, <code>DX_MSG_HIGH</code>, <code>DX_MSG_LOW</code>, <code>DX_MSG_OUT_OF_RANGE</code>, <code>DX_MSG_PAIRED</code>, <code>DX_MSG_PAIRING</code>, <code>DX_MSG_PAIRING_FAILED</code>, <code>DX_MSG_RESTART_APP</code>, <code>DX_MSG_RISE_RATE</code>, <code>DX_MSG_SENSOR_24_HOURS</code>, <code>DX_MSG_SENSOR_2HOURS</code>, <code>DX_MSG_SENSOR_FAILED</code>, <code>DX_MSG_SENSOR_GRACE</code>, <code>DX_MSG_SENSOR_NO_GRACE</code>, <code>DX_MSG_SIGNAL_LOSS</code>, <code>DX_MSG_SIV_FAIL</code>, <code>DX_MSG_STOPPED</code>, <code>DX_MSG_TEMP_PROBLEM</code>, <code>DX_MSG_TRANS_FAILED</code>, <code>DX_MSG_UNKNOWN_ERROR</code>, <code>DX_MSG_URGENT_LOW</code>, <code>DX_MSG_URGENT_LOW_SOON</code>, <code>DX_MSG_WARMUP</code>, <code>DX_NO_DEXCOM_CERT</code>, <code>DX_NO_DISK_SPACE</code>, <code>DX_NO_FACTORY_TIME</code>, <code>DX_NO_ROOT_CERT</code></p>
+<h3>Smali-stier (192-dekompilering)</h3>
+<table>
+<thead>
+<tr>
+<th>CGM</th>
+<th>NotificationCodes enum file</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Libre 3</td>
+<td><code>smali/classes4/uk/ac/cam/ap/libre/error/HandleErrorMessage$NotificationCodes.smali</code></td>
+</tr>
+<tr>
+<td>Dexcom G6</td>
+<td><code>smali/classes/uk/ac/cam/ap/dexcom/error/HandleErrorMessage$NotificationCodes.smali</code></td>
+</tr>
+<tr>
+<td>Dexcom G7</td>
+<td><code>smali/classes3/com/camdiab/dexcomg7/alerts/HandleErrorMessage$NotificationCodes.smali</code></td>
+</tr>
+</tbody></table>
+<p>Eksempel interne Libre-koder: <code>LS3_MSG_SENSOR_EXPIRED</code>, <code>LS3_MSG_WRONG_PIN</code>, <code>LS3_MSG_VITAMIN_C</code>, <code>LS3_MSG_SIGNAL_LOSS</code>.</p>
+<p>Eksempel interne G6-koder: <code>DX_MSG_1ST_CALIB</code>, <code>DX_MSG_TRANS_LOW_BATTERY</code>, <code>DX_MSG_PAIRING_FAILED</code>, <code>DX_END_OF_LIFE</code>.</p>
+<p>Eksempel interne G7-koder: <code>DX_MSG_BAD_CALIBRATION</code>, <code>DX_MSG_SENSOR_GRACE</code>, <code>DX_MSG_WARMUP</code>, <code>DX_INVALID_TEST_CODE</code>.</p>
+<p>G6 og G7 deler <code>DX_</code>-prefiks i enums men ligger i <strong>ulike pakker</strong>; G7-enums er ikke et superset av G6.</p>
+<h3>Slik trekker du ut (repeterbart)</h3>
+<ol>
+<li>Dekomplier build 192:<pre><code class="language-powershell">java -jar backups\camaps-fx\tools\APKEditor.jar d -i &lt;path-to-192.apk&gt; -o $env:TEMP\camaps-deep\192
+</code></pre>
+</li>
+<li>Kjør uttrekksskriptet:<pre><code class="language-powershell">.\backups\camaps-fx\tools\extract-cgm-error-codes.ps1 -DecompileRoot $env:TEMP\camaps-deep\192
+</code></pre>
+</li>
+<li>Eller grep <code>strings.xml</code> manuelt:<pre><code class="language-powershell">Select-String -Path &quot;$env:TEMP\camaps-deep\192\resources\package_1\res\values\strings.xml&quot; -Pattern &#39;\b(DG7X|DDC|DCI|LBR)\d{3}\b&#39;
+</code></pre>
+</li>
+</ol>
+<h3>Eksporterte lister (denne undersøkelsen)</h3>
+<table>
+<thead>
+<tr>
+<th>Fil</th>
+<th>Innhold</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>to-do/CGM-ERROR-CODES-192.csv</code></td>
+<td>206 brukerrettede kode + meldingsrader</td>
+</tr>
+<tr>
+<td><code>to-do/CGM-NOTIFICATION-ENUMS-192.csv</code></td>
+<td>147 interne enum-navn</td>
+</tr>
+<tr>
+<td><code>APK-COMPARISON-189-vs-192-REPORT.nb.md</code></td>
+<td>Norsk versjon av denne rapporten (samme struktur)</td>
+</tr>
+<tr>
+<td><code>APK-COMPARISON-189-vs-192-REPORT.html</code></td>
+<td>HTML-eksport av denne rapporten</td>
+</tr>
+<tr>
+<td><code>APK-COMPARISON-189-vs-192-REPORT.nb.html</code></td>
+<td>HTML-eksport av norsk rapport</td>
+</tr>
+<tr>
+<td><code>index.html</code></td>
+<td>Lenker til begge HTML-rapporter</td>
+</tr>
+<tr>
+<td><code>tools/extract-cgm-error-codes.ps1</code></td>
+<td>Regenererer begge CSV-er fra et dekompilerings-tre</td>
+</tr>
+</tbody></table>
+<h3>Begrensninger</h3>
+<ul>
+<li>Kodene er <strong>CamAPS-interne</strong> referanse-ID-er, ikke Dexcom- eller Abbott-offentlige feilkoder.</li>
+<li>De fleste brukerstrenger forklarer ikke rotårsak; støtte bruker koden til å slå opp logger.</li>
+<li>Norsk (<code>nb</code>) og andre locale-splitter kan overstyre meldingstekst; kodene er like.</li>
+<li>Kun runtime-feil (uten strengressurs) vises ikke i <code>strings.xml</code>; enum smali er reserve-liste.</li>
+</ul>
+<h3>Abbott Libre numeriske koder (2024 fellesliste) vs CamAPS-koder</h3>
+<p>Din august 2024-liste bruker <strong>Abbott LibreLink / sensorfeil-tall</strong> (f.eks. 57, 335, 373, 380, 4000-serien, 410–725). CamAPS bruker <strong>et annet skjema</strong> og har <strong>ikke</strong> disse Abbott-tallene i <code>strings.xml</code>.</p>
+<table>
+<thead>
+<tr>
+<th>System</th>
+<th>Eksempelkoder</th>
+<th>Hvor sett</th>
+<th>I CamAPS 189/192 APK?</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Abbott Libre-app / NFC-skanning</strong></td>
+<td>373, 365, 335, 57, 380</td>
+<td>LibreLink, skannefeil, sensorfeil</td>
+<td><strong>Nei</strong> (ikke i strings)</td>
+</tr>
+<tr>
+<td><strong>CamAPS støtte-referanse</strong></td>
+<td><code>LBR001</code>–<code>LBR025</code></td>
+<td>&quot;Intern feil LBR012. Start smartenheten på nytt.&quot;</td>
+<td><strong>Yes</strong> (25 koder, <strong>uendret</strong> 189→192)</td>
+</tr>
+<tr>
+<td><strong>CamAPS Libre driver-enums</strong></td>
+<td><code>LS3_MSG_SIGNAL_LOSS</code>, <code>LS3_MSG_SENSOR_EXPIRED</code>, …</td>
+<td>Utvikler / logg-mapping</td>
+<td><strong>Yes</strong> (44 enums, <strong>uendret</strong> 189→192)</td>
+</tr>
+</tbody></table>
+<p><strong>Praktisk mapping (konseptuell, ikke 1:1 i APK):</strong></p>
+<table>
+<thead>
+<tr>
+<th>Din 2024 Abbott-kode</th>
+<th>Typisk betydning</th>
+<th>CamAPS-tilsvarende (ca.)</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>57 (Libre 3)</td>
+<td>Ny sensor / starter opp</td>
+<td><code>LS3_MSG_SENSOR_WARM_UP</code>, warmup UI strings</td>
+</tr>
+<tr>
+<td>335 (Libre 2 scan)</td>
+<td>Skanning feilet, prøv igjen</td>
+<td>NFC scan help strings; <code>LS3_MSG_START_SESS_ERR</code></td>
+</tr>
+<tr>
+<td>338</td>
+<td>Sensor starter, ikke klar</td>
+<td>Warmup / 30 min messages (<code>LS3_MSG_SENSOR_30MINUTES</code>)</td>
+</tr>
+<tr>
+<td>365</td>
+<td>Sensor fungerer ikke, bytt</td>
+<td><code>LS3_MSG_SENSOR_FAILED</code></td>
+</tr>
+<tr>
+<td>366</td>
+<td>Sjekk feste / start på nytt</td>
+<td>Sensor failed / contact distributor strings</td>
+</tr>
+<tr>
+<td>373 (+ P/E/F/I variants)</td>
+<td>Glukose utilgjengelig / rat endring</td>
+<td><code>LS3_MSG_NO_READINGS</code>, <code>LS3_MSG_RISE_RATE</code>, <code>LS3_MSG_FALL_RATE</code></td>
+</tr>
+<tr>
+<td>380</td>
+<td>Måleproblemer</td>
+<td><code>LS3_MSG_UNKNOWN_ERROR</code> or internal <code>LBR###</code></td>
+</tr>
+<tr>
+<td>4000-series (4005, 4010, …)</td>
+<td>Generelle feil (fellesskap rapportert)</td>
+<td><strong>Ikke listet</strong> i CamAPS; kan internt mappes til <code>LBR###</code></td>
+</tr>
+<tr>
+<td>410–725 block</td>
+<td>Fellesskapets &quot;generelle&quot; beskrivelser</td>
+<td><strong>Ikke i APK</strong> som numeriske koder; behandles som uoffisielle med mindre Abbott dokumenterer dem</td>
+</tr>
+</tbody></table>
+<p><strong>Fortsatt gjeldende for CamAPS (192):</strong> bruk <strong><code>LBR###</code> + <code>LS3_*</code></strong> fra denne rapporten og <code>CGM-ERROR-CODES-192.csv</code>, ikke 2024 Abbott-nummerlisten, når du kontakter CamDiab / mylife om CamAPS. Behold Abbott-listen for <strong>kun LibreLink</strong> eller <strong>rå NFC</strong>-feilsøking.</p>
+<p><strong>Uendret 189→192:</strong> Libre brukerrettet (<code>LBR###</code>) og intern (<code>LS3_*</code>) er identiske. <strong>Nytt i 192:</strong> kun <strong>G7</strong>-koder (<code>DG7X###</code>, 18 brukerrettede).</p>
+<hr>
+<h2>Companion, Glooko og tredjepartsdeling (xDrip+ / Nightscout)</h2>
+<h3>Kort svar</h3>
+<table>
+<thead>
+<tr>
+<th>Spørsmål</th>
+<th>Svar</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Nye Companion-felt i 192 for xDrip+ / Nightscout?</td>
+<td><strong>No.</strong> No <code>nightscout</code>, <code>xdrip</code>, or glucose broadcast intents in either APK.</td>
+</tr>
+<tr>
+<td>Kan Companion mate xDrip+ eller Nightscout direkte?</td>
+<td><strong>Nei.</strong> Companion er <strong>kun E2E-kryptert CamAPS-til-CamAPS</strong>.</td>
+</tr>
+<tr>
+<td>Hva endret seg for deling i 192?</td>
+<td><strong>No new export API.</strong> Samme share menu; <strong>new data types</strong> may appear inside existing channels when you use <strong>G7</strong> or <strong>Liberty</strong>.</td>
+</tr>
+</tbody></table>
+<h3>Official sharing channels (189 og 192)</h3>
+<table>
+<thead>
+<tr>
+<th>Kanal</th>
+<th>Retning</th>
+<th>Data (jf. app-tekster / GDPR)</th>
+<th>xDrip+ / Nightscout-sti</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>CamAPS Companion</strong></td>
+<td>Pasienttelefon → Companions CamAPS-app (E2E)</td>
+<td>Sensorglukose, insulindata, valgfri trendgraf; pumpe/CGM <strong>kun visning</strong> på Companion</td>
+<td><strong>Ingen built-in.</strong> Companion cannot re-share or control devices.</td>
+</tr>
+<tr>
+<td><strong>Glooko / Glooko XT</strong></td>
+<td>Opplasting til tilknyttet Glooko-bruker</td>
+<td>Terapi + enhetsopplasting (cloud DTO-er)</td>
+<td><strong>Indirekte:</strong> fellesskap Glooko → Nightscout-broer (utenfor CamAPS).</td>
+</tr>
+<tr>
+<td><strong>mylife Cloud</strong></td>
+<td>Opplasting til Ypsomed sky-konto</td>
+<td>Samme DTO family as Glooko path</td>
+<td><strong>Indirekte:</strong> proprietært; ingen NS/xDrip-strenger i APK.</td>
+</tr>
+<tr>
+<td><strong>Dexcom Follow</strong></td>
+<td>Til Dexcom Follow-app følgere</td>
+<td>CGM-data, varsler, valgfri trendgraf (<strong>G6/G7</strong>)</td>
+<td><strong>Separat fra Companion.</strong> xDrip+ kan bruke Dexcom Share/Follow som egen kilde, ikke fra CamAPS Companion.</td>
+</tr>
+<tr>
+<td><strong>SMS Followers</strong></td>
+<td>SMS-varsler (opptil 5)</td>
+<td>Kun varselmeldinger</td>
+<td>Ikke en glukosestrøm for Nightscout.</td>
+</tr>
+</tbody></table>
+<p>Companion og SMS-følgere er <strong>gjensidig utelukkende</strong> (som før).</p>
+<h3>Hva Companion deler (uendret GDPR-tekst 189 vs 192)</h3>
+<p>GDPR-avsnittet <strong>Usage and Linkage Data</strong> er <strong>byte-identisk</strong> i 189 og 192:</p>
+<ul>
+<li>Pumpe- og senderserienummer</li>
+<li>Pumpe, sensor og <strong>lukket-/åpen-sløyfe-handlingslogg</strong></li>
+<li>App-kommando-flytlogg</li>
+<li>Hendelseslogg</li>
+<li>Følger-/portal-kontoinfo som lagt inn i appen</li>
+<li>Støttehenvendelser, trenerdetaljer</li>
+</ul>
+<p>Companion-invitasjonstekst (192): del <strong>sensorglukose og insulindata</strong> med valgfri <strong>trendgraf</strong>. Companion-modus: <strong>ingen</strong> vidaredeling, <strong>ingen</strong> pumpe/CGM-styring.</p>
+<h3>Cloud DTO-felt (Glooko / mylife-opplasting): diff 189 vs 192</h3>
+<p>Sammenlignet <code>com.camdiab.fx_alert.cloud.mylife.data.dto.*</code> mellom builds:</p>
+<table>
+<thead>
+<tr>
+<th>DTO / enum</th>
+<th>189</th>
+<th>192</th>
+<th>Nye felt for NS?</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>CGMReadingDTO</code> public fields</td>
+<td>15 fields (Egv, Rate, PredictedEgv, …)</td>
+<td><strong>Samme 15</strong></td>
+<td>Nei</td>
+</tr>
+<tr>
+<td><code>TherapyEventDTO$RecordType</code></td>
+<td>Bolus, Carbs, AutoMode, BasalRate, …</td>
+<td><strong>Samme set</strong></td>
+<td>Ingen <code>Liberty</code>-recordtype</td>
+</tr>
+<tr>
+<td><code>DeviceUploadDTO</code> public fields</td>
+<td>device settings, basal programs, …</td>
+<td><strong>Samme set</strong></td>
+<td>Nei</td>
+</tr>
+<tr>
+<td><code>BaseDTO$CGMType</code></td>
+<td>DEXCOM_G6, DEXCOM_G7, LIBRE_3, LIBRE_3_PLUS</td>
+<td><strong>Samme</strong> (G7 enum existed in 189 DTO only)</td>
+<td>G7 <strong>live</strong> i 192</td>
+</tr>
+</tbody></table>
+<p>Det finnes <strong>ingen nye JSON/DTO-egenskaper</strong> i 192 som xDrip+ eller Nightscout kan bruke uten egen bro.</p>
+<h3>Hva som er <em>nytt i praksis</em> for følgere (kun 192)</h3>
+<p>Dette er ikke nye Companion-<strong>innstillinger</strong>, men nytt <strong>innhold</strong> Companion eller sky-opplasting kan bære når pasienten bruker 192-funksjoner:</p>
+<table>
+<thead>
+<tr>
+<th>Funksjon</th>
+<th>Synlig for Companion?</th>
+<th>Synlig via Glooko/mylife?</th>
+<th>Merknad</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Dexcom G7</strong> CGM readings</td>
+<td>Ja (samme glukose/insulin-UI)</td>
+<td>Yes (<code>DEXCOM_G7</code> CGM type)</td>
+<td>G7-stack er <strong>kun 192</strong>; DTO enum fantes allerede i 189.</td>
+</tr>
+<tr>
+<td><strong>CamAPS Liberty</strong> (FCL)</td>
+<td>Sannsynligvis <strong>indirekte</strong> (annet sløyfe/bolusmønster)</td>
+<td>Ukjent; telemetrinøkkel <code>liberty_mode_usage</code> i 192</td>
+<td>Ingen <code>Liberty</code>-streng i cloud DTO-er; ingen dedikert Companion-bryter i strings.</td>
+</tr>
+<tr>
+<td><strong>Libre 3 Plus</strong></td>
+<td>Ja hvis den CGM-en er valgt</td>
+<td>Yes (<code>LIBRE_3_PLUS</code>)</td>
+<td>Allerede i 189 strings/DTO.</td>
+</tr>
+<tr>
+<td><strong>G7 error codes</strong> (<code>DG7X###</code>)</td>
+<td>Kun hvis vist på pasientenhet</td>
+<td>Usannsynlig i opplastinger</td>
+<td>18 koder, kun 192.</td>
+</tr>
+</tbody></table>
+<h3>Anbefalte stier til Nightscout / xDrip+ (utenfor CamAPS)</h3>
+<table>
+<thead>
+<tr>
+<th>Oppsett</th>
+<th>Typisk tilnærming</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Libre 3 on CamAPS</td>
+<td>xDrip+ <strong>Juggluco / Libre broadcast</strong> eller <strong>OOP</strong> på egen enhet; CamAPS Companion <strong>erstatter ikke</strong> dette.</td>
+</tr>
+<tr>
+<td>Dexcom G6/G7 on CamAPS</td>
+<td><strong>Dexcom Follow</strong> eller Share på følgertelefon → xDrip+ follower-modus; parallelt med CamAPS, ikke via Companion.</td>
+</tr>
+<tr>
+<td>Full therapy + pump data to NS</td>
+<td><strong>Glooko-opplasting</strong> fra CamAPS → tredjeparts Glooko-synk (fellesskap); verifiser at broen støtter gjeldende CamAPS/Glooko XT.</td>
+</tr>
+<tr>
+<td>Companion phone only</td>
+<td>Installer CamAPS som Companion; data blir i CamAPS. Reverse engineering av E2E-kanal <strong>støttes ikke</strong> av appen.</td>
+</tr>
+</tbody></table>
+<p><strong>Konklusjon:</strong> 192 legger til <strong>G7</strong> og <strong>Liberty</strong> som terapifunksjoner, men <strong>ingen ny åpen eksport</strong> for xDrip+ eller Nightscout. For åpne integrasjoner, bruk <strong>Glooko</strong>, <strong>Dexcom Follow</strong> eller <strong>parallell CGM-sti</strong> (Juggluco/xDrip+), ikke CamAPS Companion.</p>
+<hr>
+<h2>Undersøkelsesartefakter</h2>
+<ul>
+<li>Dekompilerte trær: <code>%TEMP%\camaps-deep\189-base</code>, <code>%TEMP%\camaps-deep\192</code></li>
+<li>CGM error exports: <code>to-do/CGM-ERROR-CODES-192.csv</code>, <code>to-do/CGM-NOTIFICATION-ENUMS-192.csv</code></li>
+<li>Norsk rapport: <code>to-do/APK-COMPARISON-189-vs-192-REPORT.nb.md</code></li>
+<li>Uttrekksskript: <code>tools/extract-cgm-error-codes.ps1</code></li>
+<li>Tools: APKEditor 1.4.5, platform-tools adb 37.0.0</li>
+<li>Opprinnelig plan: <code>camaps_apk_comparison_7491c498.plan.md</code></li>
+</ul>
+</article>
+      <footer class="site-footer">
+        <p><strong>Research only.</strong> Not a medical device. Insulin dosing errors can cause severe harm or death.</p>
+        <p>Based on <a href="https://github.com/SandraK82/ypsopump-research">SandraK82/ypsopump-research</a> (MIT). Enhanced fork by <a href="https://github.com/master3395/ypsopump-research">master3395</a>.</p>
+      </footer>
+    </div>
+  </div>
+</body>
+</html>

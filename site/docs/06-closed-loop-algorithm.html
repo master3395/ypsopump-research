@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>06 — Closed-Loop Algorithm: Native Library Protection | YpsoPump Research</title>
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <a href="../index.html">YpsoPump Research</a>
+    <span class="tagline">#WeAreNotWaiting</span>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="Documentation"><h2>Pump and BLE</h2><ul><li><a href="01-hardware.html">01 — hardware</a></li><li><a href="02-ble-protocol.html">02 — ble protocol</a></li><li><a href="03-encryption.html">03 — encryption</a></li><li><a href="04-key-exchange.html">04 — key exchange</a></li></ul><h2>Backend and security</h2><ul><li><a href="05-backend-communication.html">05 — backend communication</a></li><li><a href="06-closed-loop-algorithm.html" class="active">06 — closed loop algorithm</a></li><li><a href="07-obfuscation.html">07 — obfuscation</a></li><li><a href="08-security-findings.html">08 — security findings</a></li><li><a href="09-bypass-options.html">09 — bypass options</a></li><li><a href="10-legal-analysis.html">10 — legal analysis</a></li></ul><h2>CamAPS FX</h2><ul><li><a href="11-camaps-algorithm-analysis.html">11 — camaps algorithm analysis</a></li><li><a href="12-camaps-sideload-bypass.html">12 — camaps sideload bypass</a></li><li><a href="13-play-integrity-bypass-success.html">13 — play integrity bypass success</a></li><li><a href="20-camaps-apk-189-vs-192.html">20 — camaps apk 189 vs 192</a></li><li><a href="21-camaps-liberty-availability.html">21 — camaps liberty availability</a></li><li><a href="22-cgm-error-codes-reference.html">22 — cgm error codes reference</a></li></ul><h2>mylife app</h2><ul><li><a href="14-mylife-app-overview.html">14 — mylife app overview</a></li><li><a href="15-mylife-app-security.html">15 — mylife app security</a></li><li><a href="16-mylife-app-proregia-protocol.html">16 — mylife app proregia protocol</a></li><li><a href="17-mylife-app-components.html">17 — mylife app components</a></li><li><a href="18-mylife-app-bypass-plan.html">18 — mylife app bypass plan</a></li><li><a href="19-key-lifecycle-pump-rotation.html">19 — key lifecycle pump rotation</a></li></ul><h2>Guides</h2><ul><li><a href="../guides/building-a-driver-app.html">building a driver app</a></li><li><a href="../guides/frida-key-extraction.html">frida key extraction</a></li><li><a href="../guides/ble-sniffing-setup.html">ble sniffing setup</a></li></ul><h2>More</h2><ul><li><a href="../index.html">Home</a></li><li><a href="../data/index.html">Data / CSV</a></li><li><a href="https://github.com/master3395/ypsopump-research">GitHub</a></li></ul></nav>
+    <div class="main">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / 06 — Closed-Loop Algorithm: Native Library Protection</div>
+      
+      <article class="content"><h1>06 — Closed-Loop Algorithm: Native Library Protection</h1>
+<blockquote>
+<p><strong>Note (master3395 fork):</strong> Upstream analysis used CamAPS FX <strong>v1.4(190).111</strong>. For build <strong>189 vs 192</strong> differences (G7, Liberty, Play Integrity 1.6), see <a href="20-camaps-apk-189-vs-192.html">20 — CamAPS APK comparison</a> and <a href="21-camaps-liberty-availability.html">21 — Liberty availability</a>.</p>
+</blockquote>
+<h2>Overview</h2>
+<p>The CamAPS FX closed-loop insulin dosing algorithm is protected by a <strong>two-stage native library encryption system</strong>. The algorithm itself runs as native code, never exposed as Java/Kotlin bytecode, and is additionally encrypted at rest within the APK.</p>
+<h2>Native Library Inventory</h2>
+<table>
+<thead>
+<tr>
+<th>Library</th>
+<th>Size</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>liba532a9.so</code></td>
+<td>554 KB</td>
+<td><strong>Encrypted algorithm container</strong></td>
+</tr>
+<tr>
+<td><code>libe61d.so</code></td>
+<td>1.3 MB</td>
+<td><strong>Security runtime</strong> (decrypts <code>liba532a9.so</code>)</td>
+</tr>
+<tr>
+<td><code>libsodium.so</code></td>
+<td>267 KB</td>
+<td>BLE crypto (libsodium 1.0.20)</td>
+</tr>
+<tr>
+<td><code>libd7c23b.so</code></td>
+<td>5.7 MB</td>
+<td>SQLCipher 4.9.0 + OpenSSL 3.0.16</td>
+</tr>
+<tr>
+<td><code>libjnidispatch.so</code></td>
+<td>166 KB</td>
+<td>JNA 7.0.4 dispatch bridge</td>
+</tr>
+</tbody></table>
+<h2>The Encrypted Container: <code>liba532a9.so</code></h2>
+<h3>Static Analysis</h3>
+<ul>
+<li><strong>No <code>.text</code> segment</strong> — no executable code in the ELF file</li>
+<li><strong>No symbols</strong> — completely stripped</li>
+<li><strong>No imports</strong> — no dynamic library dependencies</li>
+<li><strong>Entropy</strong>: 7.9998 / 8.0 — consistent with AES-256 encrypted data</li>
+<li><strong>Conclusion</strong>: The entire file is an encrypted payload, not a valid shared library in its own right</li>
+</ul>
+<h3>Runtime Decryption</h3>
+<p>At app startup, <code>libe61d.so</code> (the security runtime):</p>
+<ol>
+<li>Performs integrity checks (root detection, anti-debug, anti-tamper)</li>
+<li>If all checks pass, decrypts <code>liba532a9.so</code> in memory</li>
+<li>Calls <code>RegisterNatives()</code> to bind the decrypted code to Java methods</li>
+<li>The decrypted code never touches disk</li>
+</ol>
+<h2>The Security Runtime: <code>libe61d.so</code></h2>
+<h3>Exported Symbols</h3>
+<p>Only <strong>3 exported symbols</strong> — extremely minimal surface:</p>
+<ul>
+<li><code>JNI_OnLoad</code> (39 KB of code — 9,776 ARM64 instructions)</li>
+<li>Two additional helper symbols</li>
+</ul>
+<h3>Obfuscation Metrics</h3>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>JNI_OnLoad</code> size</td>
+<td>39 KB</td>
+</tr>
+<tr>
+<td>Instructions</td>
+<td>9,776</td>
+</tr>
+<tr>
+<td>Indirect calls (BLR)</td>
+<td>986</td>
+</tr>
+<tr>
+<td>Obfuscated syscalls (SVC)</td>
+<td>476</td>
+</tr>
+</tbody></table>
+<h3>Anti-Tamper Capabilities</h3>
+<pre><code>libe61d.so — Security Runtime
+    │
+    ├── Root Detection
+    │   ├── __system_property_find_nth()
+    │   ├── __system_property_foreach()
+    │   ├── __system_property_get()
+    │   ├── Check for /sbin/su, /system/xbin/su
+    │   └── Check for Superuser.apk
+    │
+    ├── Anti-Debug
+    │   ├── 476 obfuscated SVC syscalls
+    │   ├── ptrace self-attach detection
+    │   ├── /proc/self/status parsing
+    │   └── Process monitoring via fork/execv
+    │
+    ├── Anti-Frida / Anti-Hook
+    │   ├── dladdr() — check library origins
+    │   ├── dlopen() — monitor loaded libraries
+    │   ├── mprotect() — detect page permission changes
+    │   └── Memory scanning for Frida signatures
+    │
+    └── Anti-Tamper
+        ├── fork() + execv() self-monitoring
+        ├── APK integrity verification
+        └── kill() / killpg() for self-termination
+</code></pre>
+<h3>Imported Functions (Signature of Anti-Tamper)</h3>
+<pre><code class="language-c">JNI_OnLoad, __system_property_find_nth, __system_property_foreach,
+__system_property_get, __system_property_read, __system_property_read_callback,
+fork, execv, kill, killpg, getppid, dladdr, dlerror, dlopen, dlsym,
+mprotect, getpagesize, ioctl, fcntl, fopen, fclose, dup2, close, closedir,
+basename, atoi, calloc, free, malloc, isupper, _exit
+</code></pre>
+<h2>JNI Interface: <code>GlobalFunctions.java</code></h2>
+<p>The decrypted algorithm exposes three native methods:</p>
+<pre><code class="language-java">public static native synchronized String getRecommendation(
+    String patientDataJson,    // Patient profile, settings
+    String cgmDataJson,        // CGM readings array
+    String pumpStatusJson,     // Current pump state
+    byte[] licenseToken        // License/authentication token
+);
+
+public static native synchronized float getTDD(
+    String patientData,
+    String history,
+    float f1,
+    float f2,
+    long timestamp,
+    byte[] licenseToken
+);
+
+public static native synchronized int newPatient(String patientJson);
+</code></pre>
+<h3>The <code>byte[]</code> License Token</h3>
+<p>The <code>licenseToken</code> parameter acts as a runtime authentication mechanism:</p>
+<ul>
+<li>Without a valid token, the algorithm returns empty/error results</li>
+<li>The token is likely derived from the CamAPS FX subscription license</li>
+<li>This prevents extracted algorithm code from being used in third-party apps</li>
+<li>Additional licensing check via <strong>PairIP</strong> (<code>com/pairip/licensecheck/</code>) and Google Play</li>
+</ul>
+<h2>2-Stage Protection Flow</h2>
+<pre><code>┌─────────────────────────────────────────────┐
+│  APK on disk                                │
+│                                             │
+│  liba532a9.so  ── AES-256 encrypted blob   │
+│  libe61d.so    ── security runtime          │
+│                                             │
+└──────────────────┬──────────────────────────┘
+                   │ App launch
+                   ▼
+┌─────────────────────────────────────────────┐
+│  libe61d.so::JNI_OnLoad()                   │
+│                                             │
+│  1. Root detection     ─── FAIL → crash     │
+│  2. Anti-debug check   ─── FAIL → crash     │
+│  3. Anti-Frida check   ─── FAIL → crash     │
+│  4. APK integrity      ─── FAIL → crash     │
+│  5. All passed                              │
+│     └── Decrypt liba532a9.so in memory      │
+│     └── RegisterNatives() → bind JNI        │
+│                                             │
+└──────────────────┬──────────────────────────┘
+                   │
+                   ▼
+┌─────────────────────────────────────────────┐
+│  Decrypted Algorithm (in memory only)       │
+│                                             │
+│  getRecommendation(patient, cgm, pump, lic) │
+│  getTDD(patient, history, ..., lic)         │
+│  newPatient(patient)                        │
+│                                             │
+│  License token validated per call           │
+└─────────────────────────────────────────────┘
+</code></pre>
+<h2>Relevance for AAPS Driver</h2>
+<p>The closed-loop algorithm is <strong>NOT needed</strong> for an AAPS pump driver because:</p>
+<ol>
+<li>AAPS has its own algorithm (oref1 / OpenAPS)</li>
+<li>The driver only needs to send bolus/TBR commands to the pump</li>
+<li>Algorithm decisions are made by AAPS, not the pump</li>
+<li>The pump is a &quot;dumb&quot; executor — it delivers insulin as instructed</li>
+</ol>
+<p>The security around the algorithm protects CamDiab&#39;s intellectual property (the Cambridge closed-loop algorithm), not the pump communication protocol.</p>
+<h2>Bypass Considerations</h2>
+<p>For researchers who want to study the algorithm:</p>
+<ol>
+<li><strong>Frida + anti-anti-debug</strong>: Bypass <code>libe61d.so</code> checks, then dump decrypted memory</li>
+<li><strong>Hardware debugger</strong>: JTAG/SWD on the Android device to bypass all software checks</li>
+<li><strong>Emulation</strong>: Run the native code in a controlled environment (QEMU + Android linker)</li>
+<li><strong>Hook <code>RegisterNatives()</code></strong>: Intercept the JNI binding to capture function pointers</li>
+</ol>
+<p>Note: The algorithm is likely a variant of the Cambridge MPC (Model Predictive Control) algorithm published in academic papers, so the general approach is already known — only the specific tuning and implementation are protected.</p>
+</article>
+      <footer class="site-footer">
+        <p><strong>Research only.</strong> Not a medical device. Insulin dosing errors can cause severe harm or death.</p>
+        <p>Based on <a href="https://github.com/SandraK82/ypsopump-research">SandraK82/ypsopump-research</a> (MIT). Enhanced fork by <a href="https://github.com/master3395/ypsopump-research">master3395</a>.</p>
+      </footer>
+    </div>
+  </div>
+</body>
+</html>

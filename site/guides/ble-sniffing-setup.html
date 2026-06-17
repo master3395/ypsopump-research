@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BLE Sniffing Setup Guide | YpsoPump Research</title>
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <a href="../index.html">YpsoPump Research</a>
+    <span class="tagline">#WeAreNotWaiting</span>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="Documentation"><h2>Pump and BLE</h2><ul><li><a href="../docs/01-hardware.html">01 — hardware</a></li><li><a href="../docs/02-ble-protocol.html">02 — ble protocol</a></li><li><a href="../docs/03-encryption.html">03 — encryption</a></li><li><a href="../docs/04-key-exchange.html">04 — key exchange</a></li></ul><h2>Backend and security</h2><ul><li><a href="../docs/05-backend-communication.html">05 — backend communication</a></li><li><a href="../docs/06-closed-loop-algorithm.html">06 — closed loop algorithm</a></li><li><a href="../docs/07-obfuscation.html">07 — obfuscation</a></li><li><a href="../docs/08-security-findings.html">08 — security findings</a></li><li><a href="../docs/09-bypass-options.html">09 — bypass options</a></li><li><a href="../docs/10-legal-analysis.html">10 — legal analysis</a></li></ul><h2>CamAPS FX</h2><ul><li><a href="../docs/11-camaps-algorithm-analysis.html">11 — camaps algorithm analysis</a></li><li><a href="../docs/12-camaps-sideload-bypass.html">12 — camaps sideload bypass</a></li><li><a href="../docs/13-play-integrity-bypass-success.html">13 — play integrity bypass success</a></li><li><a href="../docs/20-camaps-apk-189-vs-192.html">20 — camaps apk 189 vs 192</a></li><li><a href="../docs/21-camaps-liberty-availability.html">21 — camaps liberty availability</a></li><li><a href="../docs/22-cgm-error-codes-reference.html">22 — cgm error codes reference</a></li></ul><h2>mylife app</h2><ul><li><a href="../docs/14-mylife-app-overview.html">14 — mylife app overview</a></li><li><a href="../docs/15-mylife-app-security.html">15 — mylife app security</a></li><li><a href="../docs/16-mylife-app-proregia-protocol.html">16 — mylife app proregia protocol</a></li><li><a href="../docs/17-mylife-app-components.html">17 — mylife app components</a></li><li><a href="../docs/18-mylife-app-bypass-plan.html">18 — mylife app bypass plan</a></li><li><a href="../docs/19-key-lifecycle-pump-rotation.html">19 — key lifecycle pump rotation</a></li></ul><h2>Guides</h2><ul><li><a href="building-a-driver-app.html">building a driver app</a></li><li><a href="frida-key-extraction.html">frida key extraction</a></li><li><a href="ble-sniffing-setup.html" class="active">ble sniffing setup</a></li></ul><h2>More</h2><ul><li><a href="../index.html">Home</a></li><li><a href="../data/index.html">Data / CSV</a></li><li><a href="https://github.com/master3395/ypsopump-research">GitHub</a></li></ul></nav>
+    <div class="main">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / BLE Sniffing Setup Guide</div>
+      
+      <article class="content"><h1>BLE Sniffing Setup Guide</h1>
+<h2>Overview</h2>
+<p>This guide explains how to capture and decrypt YpsoPump BLE traffic using an nRF Sniffer and Wireshark. Since the pump uses application-layer encryption (XChaCha20-Poly1305), raw BLE sniffing shows encrypted payloads — but combined with extracted keys, full decryption is possible.</p>
+<h2>Hardware Requirements</h2>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Purpose</th>
+<th>Approximate Cost</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>nRF52840 Dongle</strong></td>
+<td>BLE sniffer hardware</td>
+<td>~10 EUR</td>
+</tr>
+<tr>
+<td><strong>nRF Sniffer firmware</strong></td>
+<td>Packet capture firmware</td>
+<td>Free</td>
+</tr>
+<tr>
+<td><strong>Computer</strong></td>
+<td>Running Wireshark</td>
+<td>—</td>
+</tr>
+<tr>
+<td><strong>Android phone</strong></td>
+<td>Running CamAPS or custom driver</td>
+<td>—</td>
+</tr>
+</tbody></table>
+<p>Alternative sniffers:</p>
+<ul>
+<li>Ubertooth One (more capable, more expensive)</li>
+<li>TI CC2540 USB Dongle (older, BLE 4.0 only)</li>
+<li>Ellisys Bluetooth Tracker (professional, expensive)</li>
+</ul>
+<h2>Software Setup</h2>
+<h3>1. Flash nRF Sniffer Firmware</h3>
+<pre><code class="language-bash"># Download nRF Sniffer from Nordic
+# https://www.nordicsemi.com/Products/Development-tools/nrf-sniffer-for-bluetooth-le
+
+# Flash using nrfutil
+nrfutil dfu usb-serial -p /dev/ttyACM0 -pkg sniffer_nrf52840dongle_nrf52840_x.x.x.zip
+</code></pre>
+<h3>2. Install Wireshark Plugin</h3>
+<pre><code class="language-bash"># Copy the nRF Sniffer Wireshark plugin
+cp nrf_sniffer_for_bluetooth_le/extcap/* ~/.config/wireshark/extcap/
+chmod +x ~/.config/wireshark/extcap/nrf_sniffer_for_bluetooth_le.py
+
+# Install Python dependencies
+pip install pyserial
+</code></pre>
+<h3>3. Configure Wireshark</h3>
+<ol>
+<li>Open Wireshark</li>
+<li>The nRF Sniffer should appear as a capture interface</li>
+<li>Double-click to configure:<ul>
+<li><strong>Device</strong>: Select your nRF52840 dongle</li>
+<li><strong>Follow</strong>: Set to the pump&#39;s BLE address (if known)</li>
+<li><strong>RSSI filter</strong>: Optional, helps in noisy environments</li>
+</ul>
+</li>
+</ol>
+<h2>Capture Process</h2>
+<h3>Step 1: Identify the Pump</h3>
+<pre><code>1. Start Wireshark capture on nRF Sniffer interface
+2. Power on the YpsoPump
+3. Look for advertisements from &quot;mylife YpsoPump XXXXXX&quot;
+4. Note the BLE MAC address
+5. Set the sniffer to follow this address
+</code></pre>
+<h3>Step 2: Capture Connection</h3>
+<pre><code>1. Restart capture, following the pump&#39;s address
+2. Open CamAPS (or custom driver) on the phone
+3. Let the app connect to the pump
+4. Capture the full connection sequence:
+   - Connection request
+   - MTU negotiation
+   - Service discovery
+   - Characteristic reads/writes (encrypted)
+</code></pre>
+<h3>Step 3: Identify Key Exchange</h3>
+<p>Look for these patterns in the capture:</p>
+<table>
+<thead>
+<tr>
+<th>Packet</th>
+<th>Size</th>
+<th>Direction</th>
+<th>Content</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Read response</td>
+<td>64 bytes</td>
+<td>Pump → App</td>
+<td>Challenge (32B) + Public Key (32B)</td>
+</tr>
+<tr>
+<td>Write request</td>
+<td>116 bytes</td>
+<td>App → Pump</td>
+<td>Key exchange payload</td>
+</tr>
+<tr>
+<td>Subsequent writes</td>
+<td>Variable</td>
+<td>App → Pump</td>
+<td>Encrypted commands</td>
+</tr>
+<tr>
+<td>Notifications</td>
+<td>Variable</td>
+<td>Pump → App</td>
+<td>Encrypted responses</td>
+</tr>
+</tbody></table>
+<h2>Wireshark Display Filters</h2>
+<pre><code># Show only BLE ATT protocol
+btatt
+
+# Show only writes to pump
+btatt.opcode == 0x12 || btatt.opcode == 0x52
+
+# Show only notifications from pump
+btatt.opcode == 0x1b
+
+# Show packets &gt; 50 bytes (likely encrypted data)
+btatt &amp;&amp; frame.len &gt; 50
+
+# Show specific UUID
+btatt.handle == 0x0012
+
+# Filter by connection handle
+btle.connection_handle == 0x0040
+</code></pre>
+<h2>Decryption (Post-Capture)</h2>
+<h3>Prerequisites</h3>
+<p>You need the extracted shared key (see <a href="frida-key-extraction.html">frida-key-extraction.md</a>):</p>
+<ul>
+<li><code>sharedKey</code> (32 bytes)</li>
+<li>Initial <code>writeCounter</code> and <code>readCounter</code> values</li>
+</ul>
+<h3>Python Decryption Script</h3>
+<pre><code class="language-python">#!/usr/bin/env python3
+&quot;&quot;&quot;Decrypt YpsoPump BLE traffic from Wireshark PCAP export.&quot;&quot;&quot;
+
+import sys
+import struct
+from nacl.aead import XCHACHA20POLY1305_IETF
+
+def decrypt_payload(encrypted_payload: bytes, shared_key: bytes) -&gt; bytes:
+    &quot;&quot;&quot;
+    Decrypt a YpsoPump BLE payload.
+    Format: ciphertext || nonce (nonce is last 24 bytes)
+    &quot;&quot;&quot;
+    if len(encrypted_payload) &lt; 24 + 16:  # min: nonce + tag
+        raise ValueError(f&quot;Payload too short: {len(encrypted_payload)} bytes&quot;)
+
+    nonce = encrypted_payload[-24:]           # Last 24 bytes
+    ciphertext = encrypted_payload[:-24]      # Everything before nonce
+
+    box = XCHACHA20POLY1305_IETF(shared_key)
+    plaintext = box.decrypt(ciphertext, nonce)
+
+    # Parse counters from end of plaintext
+    if len(plaintext) &gt;= 12:
+        command_data = plaintext[:-12]
+        reboot_counter = struct.unpack(&#39;&gt;I&#39;, plaintext[-12:-8])[0]
+        rw_counter = struct.unpack(&#39;&gt;Q&#39;, plaintext[-8:])[0]
+        return command_data, reboot_counter, rw_counter
+
+    return plaintext, None, None
+
+
+def main():
+    if len(sys.argv) &lt; 3:
+        print(&quot;Usage: decrypt_ypso.py &lt;shared_key_hex&gt; &lt;payload_hex&gt;&quot;)
+        print(&quot;   or: decrypt_ypso.py &lt;shared_key_hex&gt; -f &lt;pcap_export.txt&gt;&quot;)
+        sys.exit(1)
+
+    shared_key = bytes.fromhex(sys.argv[1])
+    assert len(shared_key) == 32, &quot;Shared key must be 32 bytes&quot;
+
+    if sys.argv[2] == &#39;-f&#39;:
+        # Read hex payloads from file (one per line)
+        with open(sys.argv[3]) as f:
+            for i, line in enumerate(f):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    payload = bytes.fromhex(line)
+                    data, reboot, counter = decrypt_payload(payload, shared_key)
+                    print(f&quot;[{i}] Decrypted ({len(data)} bytes): {data.hex()}&quot;)
+                    print(f&quot;     Reboot: {reboot}, Counter: {counter}&quot;)
+                except Exception as e:
+                    print(f&quot;[{i}] Error: {e}&quot;)
+    else:
+        payload = bytes.fromhex(sys.argv[2])
+        data, reboot, counter = decrypt_payload(payload, shared_key)
+        print(f&quot;Decrypted ({len(data)} bytes): {data.hex()}&quot;)
+        print(f&quot;Reboot counter: {reboot}&quot;)
+        print(f&quot;Read/Write counter: {counter}&quot;)
+
+
+if __name__ == &#39;__main__&#39;:
+    main()
+</code></pre>
+<h3>Installation</h3>
+<pre><code class="language-bash">pip install pynacl
+python decrypt_ypso.py &lt;shared_key_hex&gt; &lt;payload_hex&gt;
+</code></pre>
+<h3>Example</h3>
+<pre><code class="language-bash"># Shared key (example, 32 bytes hex)
+KEY=&quot;a1b2c3d4e5f6...32_bytes_hex...&quot;
+
+# Encrypted payload from Wireshark (hex)
+PAYLOAD=&quot;deadbeef...ciphertext_hex...nonce_24_bytes_hex&quot;
+
+python decrypt_ypso.py $KEY $PAYLOAD
+# Output: Decrypted (16 bytes): 001e000a...
+#         Reboot counter: 5
+#         Read/Write counter: 42
+</code></pre>
+<h2>Wireshark Lua Dissector (Advanced)</h2>
+<p>For inline decryption in Wireshark, create a custom Lua dissector:</p>
+<pre><code class="language-lua">-- ypso_dissector.lua
+-- Place in ~/.config/wireshark/plugins/
+
+local ypso_proto = Proto(&quot;ypso&quot;, &quot;YpsoPump BLE Protocol&quot;)
+
+-- Fields
+local f_nonce = ProtoField.bytes(&quot;ypso.nonce&quot;, &quot;Nonce (24 bytes)&quot;)
+local f_ciphertext = ProtoField.bytes(&quot;ypso.ciphertext&quot;, &quot;Ciphertext&quot;)
+local f_tag = ProtoField.bytes(&quot;ypso.tag&quot;, &quot;Poly1305 Tag (16 bytes)&quot;)
+
+ypso_proto.fields = { f_nonce, f_ciphertext, f_tag }
+
+function ypso_proto.dissector(buffer, pinfo, tree)
+    local length = buffer:len()
+    if length &lt; 40 then return end  -- min: 16 tag + 24 nonce
+
+    pinfo.cols.protocol = &quot;YpsoPump&quot;
+
+    local subtree = tree:add(ypso_proto, buffer(), &quot;YpsoPump Encrypted Payload&quot;)
+
+    -- Nonce is last 24 bytes
+    local nonce_offset = length - 24
+    subtree:add(f_nonce, buffer(nonce_offset, 24))
+
+    -- Tag is last 16 bytes before nonce
+    if nonce_offset &gt;= 16 then
+        subtree:add(f_tag, buffer(nonce_offset - 16, 16))
+        subtree:add(f_ciphertext, buffer(0, nonce_offset - 16))
+    end
+end
+
+-- Register for BLE ATT
+local btatt_table = DissectorTable.get(&quot;btatt.handle&quot;)
+-- Add your characteristic handles here after discovery
+-- btatt_table:add(0x0012, ypso_proto)
+</code></pre>
+<h2>Android HCI Snoop Log (Alternative)</h2>
+<p>If you don&#39;t have an nRF Sniffer, use Android&#39;s built-in BLE logging:</p>
+<pre><code class="language-bash"># Enable HCI snoop log
+adb shell settings put secure bluetooth_hci_log 1
+
+# Restart Bluetooth
+adb shell svc bluetooth disable &amp;&amp; adb shell svc bluetooth enable
+
+# Let CamAPS communicate with pump...
+
+# Pull the log
+adb pull /data/misc/bluetooth/logs/btsnoop_hci.log
+
+# Open in Wireshark
+wireshark btsnoop_hci.log
+</code></pre>
+<p>Note: HCI snoop captures from the phone&#39;s perspective (after BLE pairing encryption is removed), so you see the application-layer payload directly.</p>
+<h2>Tips</h2>
+<ol>
+<li><strong>Start sniffing before connection</strong> — the nRF Sniffer needs to see the initial connection to follow the frequency hopping</li>
+<li><strong>Stay close</strong> — BLE range is ~10m; the sniffer must be within range of both phone and pump</li>
+<li><strong>Reduce interference</strong> — disable other BLE devices nearby</li>
+<li><strong>Capture multiple sessions</strong> — counter values increase, which helps identify the counter fields</li>
+<li><strong>Export as hex</strong> — Wireshark&#39;s &quot;Follow BLE stream&quot; or copy hex dumps for the decryption script</li>
+<li><strong>Compare encrypted/decrypted</strong> — knowing the command helps identify the payload structure</li>
+</ol>
+</article>
+      <footer class="site-footer">
+        <p><strong>Research only.</strong> Not a medical device. Insulin dosing errors can cause severe harm or death.</p>
+        <p>Based on <a href="https://github.com/SandraK82/ypsopump-research">SandraK82/ypsopump-research</a> (MIT). Enhanced fork by <a href="https://github.com/master3395/ypsopump-research">master3395</a>.</p>
+      </footer>
+    </div>
+  </div>
+</body>
+</html>

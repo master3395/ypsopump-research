@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>21 — CamAPS Liberty: availability and server-side gating | YpsoPump Research</title>
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <a href="../index.html">YpsoPump Research</a>
+    <span class="tagline">#WeAreNotWaiting</span>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="Documentation"><h2>Pump and BLE</h2><ul><li><a href="01-hardware.html">01 — hardware</a></li><li><a href="02-ble-protocol.html">02 — ble protocol</a></li><li><a href="03-encryption.html">03 — encryption</a></li><li><a href="04-key-exchange.html">04 — key exchange</a></li></ul><h2>Backend and security</h2><ul><li><a href="05-backend-communication.html">05 — backend communication</a></li><li><a href="06-closed-loop-algorithm.html">06 — closed loop algorithm</a></li><li><a href="07-obfuscation.html">07 — obfuscation</a></li><li><a href="08-security-findings.html">08 — security findings</a></li><li><a href="09-bypass-options.html">09 — bypass options</a></li><li><a href="10-legal-analysis.html">10 — legal analysis</a></li></ul><h2>CamAPS FX</h2><ul><li><a href="11-camaps-algorithm-analysis.html">11 — camaps algorithm analysis</a></li><li><a href="12-camaps-sideload-bypass.html">12 — camaps sideload bypass</a></li><li><a href="13-play-integrity-bypass-success.html">13 — play integrity bypass success</a></li><li><a href="20-camaps-apk-189-vs-192.html">20 — camaps apk 189 vs 192</a></li><li><a href="21-camaps-liberty-availability.html" class="active">21 — camaps liberty availability</a></li><li><a href="22-cgm-error-codes-reference.html">22 — cgm error codes reference</a></li></ul><h2>mylife app</h2><ul><li><a href="14-mylife-app-overview.html">14 — mylife app overview</a></li><li><a href="15-mylife-app-security.html">15 — mylife app security</a></li><li><a href="16-mylife-app-proregia-protocol.html">16 — mylife app proregia protocol</a></li><li><a href="17-mylife-app-components.html">17 — mylife app components</a></li><li><a href="18-mylife-app-bypass-plan.html">18 — mylife app bypass plan</a></li><li><a href="19-key-lifecycle-pump-rotation.html">19 — key lifecycle pump rotation</a></li></ul><h2>Guides</h2><ul><li><a href="../guides/building-a-driver-app.html">building a driver app</a></li><li><a href="../guides/frida-key-extraction.html">frida key extraction</a></li><li><a href="../guides/ble-sniffing-setup.html">ble sniffing setup</a></li></ul><h2>More</h2><ul><li><a href="../index.html">Home</a></li><li><a href="../data/index.html">Data / CSV</a></li><li><a href="https://github.com/master3395/ypsopump-research">GitHub</a></li></ul><h2>On this page</h2><ul class="toc"><li><a href="#what-is-camaps-liberty">What is CamAPS Liberty?</a></li><li><a href="#how-access-is-controlled-not-in-the-apk-alone">How access is controlled (not in the APK alone)</a></li><li><a href="#official-rollout-status">Official rollout status</a></li><li><a href="#what-you-can-do-without-asking-vendors-for-early-access">What you can do without asking vendors for &quot;early access&quot;</a></li><li><a href="#what-does-not-work">What does not work</a></li><li><a href="#norway-specific-notes">Norway-specific notes</a></li><li><a href="#quick-self-check">Quick self-check</a></li><li><a href="#references">References</a></li></ul></nav>
+    <div class="main">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / 21 — CamAPS Liberty: availability and server-side gating</div>
+      
+      <article class="content"><h1>21 — CamAPS Liberty: availability and server-side gating</h1>
+<blockquote>
+<p><strong>Document 21</strong> | master3395 fork addition | Last updated: 17/06/2026<br>Related: <a href="20-camaps-apk-189-vs-192.html">20 — APK 189 vs 192</a>, <a href="06-closed-loop-algorithm.html">06 — Closed-loop algorithm</a></p>
+</blockquote>
+<h2>What is CamAPS Liberty?</h2>
+<p><a href="https://camdiab.com/liberty">CamAPS Liberty</a> is CamDiab&#39;s <strong>fully closed-loop (FCL)</strong> mode. When enabled and active, users can skip meal and snack boluses and carb counting while Auto mode is on. It is optional and intended for periodic use, not a replacement for clinical follow-up.</p>
+<p>Build <strong>1.4(192).101</strong> includes Liberty code (<code>com.camdiab.fx_alert.fxfcl</code>). Build <strong>189</strong> does not.</p>
+<h2>How access is controlled (not in the APK alone)</h2>
+<p>Liberty visibility is <strong>server-gated</strong>, not only a local settings toggle. Evidence from CamAPS FX 192 (<code>FxFcl.smali</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Mechanism</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>algorithm_fx_fcl_setting_allowed</code></td>
+<td>Country or region pattern from remote config</td>
+</tr>
+<tr>
+<td><code>algorithm_fx_fcl_setting_persisting</code></td>
+<td>Persisted availability rules</td>
+</tr>
+<tr>
+<td><code>liberty_enabled_for_this_user</code></td>
+<td>Per-user flag from backend</td>
+</tr>
+<tr>
+<td><code>camaps_liberty_ypso</code></td>
+<td>YpsoPump-specific feature flag</td>
+</tr>
+<tr>
+<td><code>camaps_liberty_dana</code></td>
+<td>Dana pump-specific feature flag</td>
+</tr>
+<tr>
+<td><code>setFxFclFeatureCountryAllowed</code></td>
+<td>Country allowlist enforcement</td>
+</tr>
+</tbody></table>
+<p>Norwegian UI strings exist in the 192 APK (<code>nb</code> locale split), but <strong>bundled language does not mean the feature is live in Norway</strong>.</p>
+<h2>Official rollout status</h2>
+<p>CamDiab&#39;s public <a href="https://camdiab.com/liberty">Liberty page</a> lists the feature as <strong>&quot;Coming soon&quot;</strong> for myLoop and Dana, with a note that rollout is <strong>pending local market approvals and availability</strong>.</p>
+<p>CE marking for Liberty has been reported (early 2026), but <strong>market release is country by country</strong>. Norway is not documented as fully open for all users at the time of this writing.</p>
+<h2>What you can do without asking vendors for &quot;early access&quot;</h2>
+<table>
+<thead>
+<tr>
+<th>Action</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Keep CamAPS FX updated (192+, Android 13+)</td>
+<td>Liberty code only exists in newer builds</td>
+</tr>
+<tr>
+<td>Check <strong>Settings</strong> after each update</td>
+<td>Toggle appears when your account, pump, and region are enabled</td>
+</tr>
+<tr>
+<td>Follow <a href="https://camdiab.com/notifications">CamDiab notifications</a> and mylife/Ypsomed news</td>
+<td>Official rollout announcements</td>
+</tr>
+<tr>
+<td>Use standard hybrid closed-loop (Auto mode) meanwhile</td>
+<td>Approved therapy path while waiting</td>
+</tr>
+</tbody></table>
+<h2>What does not work</h2>
+<table>
+<thead>
+<tr>
+<th>Attempt</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>VPN to another country</td>
+<td>Account and remote config still gate access</td>
+</tr>
+<tr>
+<td>Sideloading or modding the APK</td>
+<td>Server flags unchanged; medical and legal risk</td>
+</tr>
+<tr>
+<td>Changing phone region only</td>
+<td>Same as VPN</td>
+</tr>
+<tr>
+<td>Expecting Liberty in build 189</td>
+<td>Package and strings absent</td>
+</tr>
+</tbody></table>
+<h2>Norway-specific notes</h2>
+<p>If you are in Norway and <strong>do not see</strong> a Liberty toggle in Settings on build 192:</p>
+<ol>
+<li>Your market may not be enabled yet on CamDiab&#39;s backend.</li>
+<li>Your pump type (YpsoPump vs Dana) may affect which flag applies.</li>
+<li>Contact <strong>mylife/Ypsomed support</strong> for <strong>rollout status</strong>, not as a request to bypass approval.</li>
+</ol>
+<p>This is separate from <strong>pump BLE key exchange</strong> research in <a href="09-bypass-options.html">09 — Bypass options</a>. Liberty gating is a <strong>clinical feature flag</strong>, not a pump cryptography bypass.</p>
+<h2>Quick self-check</h2>
+<table>
+<thead>
+<tr>
+<th>Settings shows Liberty toggle</th>
+<th>Settings does not show Liberty</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Feature enabled for your account, pump, and region</td>
+<td>Code may be in APK; server has not enabled your market or user yet</td>
+</tr>
+<tr>
+<td>Complete in-app training before use</td>
+<td>Wait for official rollout or ask support for <strong>timeline</strong>, not unlock codes</td>
+</tr>
+</tbody></table>
+<h2>References</h2>
+<ul>
+<li><a href="https://camdiab.com/liberty">CamAPS Liberty (CamDiab)</a></li>
+<li><a href="20-camaps-apk-189-vs-192.html">20 — CamAPS APK 189 vs 192</a> (Liberty smali and string evidence)</li>
+<li><a href="06-closed-loop-algorithm.html">06 — Closed-loop algorithm</a> (algorithm container, separate from FCL UI gating)</li>
+</ul>
+</article>
+      <footer class="site-footer">
+        <p><strong>Research only.</strong> Not a medical device. Insulin dosing errors can cause severe harm or death.</p>
+        <p>Based on <a href="https://github.com/SandraK82/ypsopump-research">SandraK82/ypsopump-research</a> (MIT). Enhanced fork by <a href="https://github.com/master3395/ypsopump-research">master3395</a>.</p>
+      </footer>
+    </div>
+  </div>
+</body>
+</html>
