@@ -8,6 +8,8 @@
 
 This repository is an **enhanced fork** of [SandraK82/ypsopump-research](https://github.com/SandraK82/ypsopump-research). See [ATTRIBUTION.md](ATTRIBUTION.md) and [CHANGELOG.md](CHANGELOG.md).
 
+**New here?** Read **[What's new in v2](docs/00-whats-new-in-v2.md)** (summary of all fork changes) or [norsk sammendrag](docs/00-whats-new-in-v2.nb.md).
+
 ---
 
 ## What is this?
@@ -17,6 +19,8 @@ Community research on the **mylife YpsoPump** patch pump and its companion apps 
 **This repository does NOT contain decompiled source code.** Findings are documented from static analysis of publicly available APKs and related public materials.
 
 ### What's new in v2 (master3395 fork)
+
+**[Read the full summary (doc 00)](docs/00-whats-new-in-v2.md)** | [Norsk](docs/00-whats-new-in-v2.nb.md)
 
 | Topic | Detail |
 |-------|--------|
@@ -98,6 +102,7 @@ flowchart TB
 
 | Doc | Description |
 |-----|-------------|
+| **[00 — What's new in v2](docs/00-whats-new-in-v2.md)** | **Easy summary of all fork changes (start here)** |
 | [11 — CamAPS Algorithm](docs/11-camaps-algorithm-analysis.md) | Cambridge MPC (build 190) |
 | [12 — CamAPS Sideload](docs/12-camaps-sideload-bypass.md) | Sideload bypass attempt |
 | [13 — Play Integrity](docs/13-play-integrity-bypass-success.md) | STRONG_INTEGRITY bypass notes |

@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>What's new in v2 (master3395 fork) | YpsoPump Research</title>
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <a href="../index.html">YpsoPump Research</a>
+    <span class="tagline">#WeAreNotWaiting</span>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="Documentation"><h2>Start here</h2><ul><li><a href="00-whats-new-in-v2.html" class="active">00 — whats new in v2</a></li></ul><h2>Pump and BLE</h2><ul><li><a href="01-hardware.html">01 — hardware</a></li><li><a href="02-ble-protocol.html">02 — ble protocol</a></li><li><a href="03-encryption.html">03 — encryption</a></li><li><a href="04-key-exchange.html">04 — key exchange</a></li></ul><h2>Backend and security</h2><ul><li><a href="05-backend-communication.html">05 — backend communication</a></li><li><a href="06-closed-loop-algorithm.html">06 — closed loop algorithm</a></li><li><a href="07-obfuscation.html">07 — obfuscation</a></li><li><a href="08-security-findings.html">08 — security findings</a></li><li><a href="09-bypass-options.html">09 — bypass options</a></li><li><a href="10-legal-analysis.html">10 — legal analysis</a></li></ul><h2>CamAPS FX</h2><ul><li><a href="11-camaps-algorithm-analysis.html">11 — camaps algorithm analysis</a></li><li><a href="12-camaps-sideload-bypass.html">12 — camaps sideload bypass</a></li><li><a href="13-play-integrity-bypass-success.html">13 — play integrity bypass success</a></li><li><a href="20-camaps-apk-189-vs-192.html">20 — camaps apk 189 vs 192</a></li><li><a href="21-camaps-liberty-availability.html">21 — camaps liberty availability</a></li><li><a href="22-cgm-error-codes-reference.html">22 — cgm error codes reference</a></li></ul><h2>mylife app</h2><ul><li><a href="14-mylife-app-overview.html">14 — mylife app overview</a></li><li><a href="15-mylife-app-security.html">15 — mylife app security</a></li><li><a href="16-mylife-app-proregia-protocol.html">16 — mylife app proregia protocol</a></li><li><a href="17-mylife-app-components.html">17 — mylife app components</a></li><li><a href="18-mylife-app-bypass-plan.html">18 — mylife app bypass plan</a></li><li><a href="19-key-lifecycle-pump-rotation.html">19 — key lifecycle pump rotation</a></li></ul><h2>Guides</h2><ul><li><a href="../guides/building-a-driver-app.html">building a driver app</a></li><li><a href="../guides/frida-key-extraction.html">frida key extraction</a></li><li><a href="../guides/ble-sniffing-setup.html">ble sniffing setup</a></li></ul><h2>More</h2><ul><li><a href="../index.html">Home</a></li><li><a href="../data/index.html">Data / CSV</a></li><li><a href="https://github.com/master3395/ypsopump-research">GitHub</a></li></ul><h2>On this page</h2><ul class="toc"><li><a href="#in-one-sentence">In one sentence</a></li><li><a href="#fork-vs-upstream">Fork vs upstream</a></li><li><a href="#new-features-at-a-glance-camaps-build-192">New features at a glance (CamAPS build 192)</a></li><li><a href="#new-documents-read-these-first">New documents (read these first)</a></li><li><a href="#20-camaps-apk-189-vs-19220-camaps-apk-189-vs-192md" style="padding-left:1.25rem">[20 — CamAPS APK 189 vs 192](20-camaps-apk-189-vs-192.md)</a></li><li><a href="#21-camaps-liberty-availability21-camaps-liberty-availabilitymd" style="padding-left:1.25rem">[21 — CamAPS Liberty availability](21-camaps-liberty-availability.md)</a></li><li><a href="#22-cgm-error-codes-reference22-cgm-error-codes-referencemd" style="padding-left:1.25rem">[22 — CGM error codes reference](22-cgm-error-codes-reference.md)</a></li><li><a href="#new-infrastructure-not-about-the-pump-itself">New infrastructure (not about the pump itself)</a></li><li><a href="#small-updates-to-existing-upstream-docs">Small updates to existing upstream docs</a></li><li><a href="#common-questions-quick-answers">Common questions (quick answers)</a></li><li><a href="#what-did-not-change">What did **not** change</a></li><li><a href="#suggested-reading-order">Suggested reading order</a></li><li><a href="#credits">Credits</a></li></ul></nav>
+    <div class="main">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / What's new in v2 (master3395 fork)</div>
+      <p class="lang-switch"><a href="00-whats-new-in-v2.nb.html">Norsk sammendrag</a></p>
+      <article class="content"><h1>What&#39;s new in v2 (master3395 fork)</h1>
+<blockquote>
+<p><strong>Start here</strong> if you already know <a href="https://github.com/SandraK82/ypsopump-research">SandraK82/ypsopump-research</a> and want a short overview of what this fork adds.<br>Last updated: 17/06/2026 | <a href="00-whats-new-in-v2.nb.html">Norsk sammendrag</a></p>
+</blockquote>
+<hr>
+<h2>In one sentence</h2>
+<p>This fork keeps <strong>all original YpsoPump research</strong> and adds <strong>new CamAPS FX documentation</strong> for Android builds <strong>189 vs 192</strong>, including Dexcom G7, CamAPS Liberty, CGM error codes, and a browsable docs website.</p>
+<hr>
+<h2>Fork vs upstream</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th><a href="https://github.com/SandraK82/ypsopump-research">SandraK82 (upstream)</a></th>
+<th><a href="https://github.com/master3395/ypsopump-research">master3395 (this fork)</a></th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Focus</strong></td>
+<td>YpsoPump BLE, ProRegia backend, mylife app, AAPS driver</td>
+<td>Same, <strong>plus</strong> newer CamAPS APK analysis</td>
+</tr>
+<tr>
+<td><strong>CamAPS version studied</strong></td>
+<td>v1.4(190).111</td>
+<td>v1.4(189).101 vs v1.4(192).101 (mmol/L)</td>
+</tr>
+<tr>
+<td><strong>Docs count</strong></td>
+<td>01–19 + 3 guides</td>
+<td>01–22 + 3 guides</td>
+</tr>
+<tr>
+<td><strong>Website</strong></td>
+<td>README on GitHub only</td>
+<td>README + <a href="../site/index.html">GitHub Pages site</a></td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td>MIT</td>
+<td>MIT (with <a href="../ATTRIBUTION.html">ATTRIBUTION.md</a>)</td>
+</tr>
+</tbody></table>
+<p>Nothing was removed from upstream. We only <strong>added</strong> files and <strong>light cross-links</strong> in a few existing docs.</p>
+<hr>
+<h2>New features at a glance (CamAPS build 192)</h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Build 189</th>
+<th>Build 192</th>
+<th>Why it matters</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Dexcom G7 CGM</strong></td>
+<td>No</td>
+<td><strong>Yes</strong></td>
+<td>Full G7 login, pairing, and error codes in the app</td>
+</tr>
+<tr>
+<td><strong>CamAPS Liberty (FCL)</strong></td>
+<td>No</td>
+<td><strong>Yes</strong> (code in APK)</td>
+<td>Fully closed-loop mode without meal boluses; may be hidden until your country is enabled</td>
+</tr>
+<tr>
+<td><strong>Android minimum</strong></td>
+<td>Android 12+ (SDK 31)</td>
+<td><strong>Android 13+</strong> (SDK 33)</td>
+<td>Older phones cannot run 192</td>
+</tr>
+<tr>
+<td><strong>Play Integrity library</strong></td>
+<td>1.3.0</td>
+<td><strong>1.6.0</strong></td>
+<td>May affect rooted-device setups (see doc 13)</td>
+</tr>
+<tr>
+<td><strong>Libre 3 / G6 hybrid loop</strong></td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Unchanged core product</td>
+</tr>
+<tr>
+<td><strong>Nightscout / xDrip+ in app</strong></td>
+<td>No</td>
+<td>No</td>
+<td>Still not built in; use Glooko or parallel bridges</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>New documents (read these first)</h2>
+<h3><a href="20-camaps-apk-189-vs-192.html">20 — CamAPS APK 189 vs 192</a></h3>
+<p>The <strong>main technical report</strong>. Compares two real APKs side by side:</p>
+<ul>
+<li>What is genuinely new in 192 (G7, Liberty, permissions)</li>
+<li>What changed but is not a &quot;feature&quot; (minSdk, Play Integrity, app size)</li>
+<li>What stayed the same (G6, Libre 3, Companion, Glooko)</li>
+<li>Full CGM error code tables</li>
+</ul>
+<p>Also available in <a href="20-camaps-apk-189-vs-192.nb.html">Norwegian</a>.</p>
+<h3><a href="21-camaps-liberty-availability.html">21 — CamAPS Liberty availability</a></h3>
+<p>Answers the practical question: <strong>&quot;Liberty is in my APK but I do not see the toggle.&quot;</strong></p>
+<ul>
+<li>Liberty is controlled by <strong>server flags</strong>, not only by having build 192</li>
+<li>Norway may have strings in the app but not yet be fully rolled out</li>
+<li>What you can do legitimately while waiting (no bypass tricks)</li>
+</ul>
+<h3><a href="22-cgm-error-codes-reference.html">22 — CGM error codes reference</a></h3>
+<p>Quick index for support codes shown <strong>inside CamAPS</strong>:</p>
+<ul>
+<li><code>LBR###</code> = Libre 3</li>
+<li><code>DCI###</code> / <code>DDC###</code> = Dexcom G6</li>
+<li><code>DG7X###</code> = Dexcom G7 (<strong>192 only</strong>)</li>
+</ul>
+<p><strong>Not</strong> the same as Abbott LibreLink numeric codes (373, 410, etc.).</p>
+<p>Download full lists: <a href="../data/cgm-error-codes-192.csv">cgm-error-codes-192.csv</a>, <a href="../data/cgm-notification-enums-192.csv">cgm-notification-enums-192.csv</a>.</p>
+<hr>
+<h2>New infrastructure (not about the pump itself)</h2>
+<table>
+<thead>
+<tr>
+<th>Addition</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong><a href="../site/">site/</a></strong></td>
+<td>Styled HTML docs for GitHub Pages</td>
+</tr>
+<tr>
+<td><strong><a href="../tools/build-site.mjs">tools/build-site.mjs</a></strong></td>
+<td>Rebuild the site from Markdown (<code>npm run build-site</code>)</td>
+</tr>
+<tr>
+<td><strong><a href="../CHANGELOG.html">CHANGELOG.md</a></strong></td>
+<td>Version history for this fork</td>
+</tr>
+<tr>
+<td><strong><a href="../ATTRIBUTION.html">ATTRIBUTION.md</a></strong></td>
+<td>Credits upstream author</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>Small updates to existing upstream docs</h2>
+<p>Only <strong>short notes and links</strong> were added (no rewrites):</p>
+<table>
+<thead>
+<tr>
+<th>Doc</th>
+<th>What we added</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><a href="06-closed-loop-algorithm.html">06 — Algorithm</a></td>
+<td>Pointer to APK comparison and Liberty doc</td>
+</tr>
+<tr>
+<td><a href="09-bypass-options.html">09 — Bypass</a></td>
+<td>Clarifies pump key bypass vs Liberty server gating</td>
+</tr>
+<tr>
+<td><a href="11-camaps-algorithm-analysis.html">11 — CamAPS algorithm</a></td>
+<td>Notes that deep analysis is on build 190; see doc 20 for 192</td>
+</tr>
+<tr>
+<td><a href="13-play-integrity-bypass-success.html">13 — Play Integrity</a></td>
+<td>Play Integrity <strong>1.6</strong> in build 192</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>Common questions (quick answers)</h2>
+<table>
+<thead>
+<tr>
+<th>Question</th>
+<th>Short answer</th>
+<th>Read more</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Should I update from 189 to 192?</td>
+<td>Yes if you want G7 or Liberty (when enabled) and have Android 13+</td>
+<td><a href="20-camaps-apk-189-vs-192.html">Doc 20</a></td>
+</tr>
+<tr>
+<td>Is Liberty available in Norway?</td>
+<td>Code exists in 192; rollout is market-by-market</td>
+<td><a href="21-camaps-liberty-availability.html">Doc 21</a></td>
+</tr>
+<tr>
+<td>My error says <code>LBR012</code>, what is that?</td>
+<td>CamAPS Libre support code, not LibreLink 373</td>
+<td><a href="22-cgm-error-codes-reference.html">Doc 22</a></td>
+</tr>
+<tr>
+<td>Did pump BLE research change?</td>
+<td>No new pump protocol docs in v2</td>
+<td>Docs <a href="01-hardware.html">01–04</a></td>
+</tr>
+<tr>
+<td>Where is the AAPS driver?</td>
+<td>Unchanged work-in-progress from upstream</td>
+<td><a href="../aaps-driver/">aaps-driver/</a></td>
+</tr>
+</tbody></table>
+<hr>
+<h2>What did <strong>not</strong> change</h2>
+<ul>
+<li>YpsoPump hardware, BLE commands, encryption, and key exchange docs (01–04)</li>
+<li>mylife app analysis (14–19)</li>
+<li>Frida / bypass research context (09, guides)</li>
+<li><strong>No APK files, decompiled code, or exploit scripts</strong> in this repo</li>
+</ul>
+<hr>
+<h2>Suggested reading order</h2>
+<ol>
+<li><strong>This page</strong> (you are here)</li>
+<li><a href="20-camaps-apk-189-vs-192.html">20 — APK 189 vs 192</a> if you use or plan to use build 192</li>
+<li><a href="21-camaps-liberty-availability.html">21 — Liberty</a> if you care about fully closed-loop without carb counting</li>
+<li><a href="22-cgm-error-codes-reference.html">22 — Error codes</a> when you hit a CGM alert with a letter code</li>
+<li>Upstream <a href="01-hardware.html">01 — Hardware</a> if you care about open-source pump drivers</li>
+</ol>
+<hr>
+<h2>Credits</h2>
+<p>Original research: <a href="https://github.com/SandraK82/ypsopump-research">SandraK82/ypsopump-research</a>.<br>v2 CamAPS APK work and site: <a href="https://github.com/master3395/ypsopump-research">master3395/ypsopump-research</a>.</p>
+</article>
+      <footer class="site-footer">
+        <p><strong>Research only.</strong> Not a medical device. Insulin dosing errors can cause severe harm or death.</p>
+        <p>Based on <a href="https://github.com/SandraK82/ypsopump-research">SandraK82/ypsopump-research</a> (MIT). Enhanced fork by <a href="https://github.com/master3395/ypsopump-research">master3395</a>.</p>
+      </footer>
+    </div>
+  </div>
+</body>
+</html>

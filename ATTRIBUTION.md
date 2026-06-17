@@ -18,6 +18,8 @@ Upstream documentation (docs 01–19), guides, `aaps-driver/`, and `ypsopump-tes
 
 | Addition | Description |
 |----------|-------------|
+| [docs/00-whats-new-in-v2.md](docs/00-whats-new-in-v2.md) | Easy summary of all v2 fork changes (English) |
+| [docs/00-whats-new-in-v2.nb.md](docs/00-whats-new-in-v2.nb.md) | Norwegian summary of v2 changes |
 | [docs/20-camaps-apk-189-vs-192.md](docs/20-camaps-apk-189-vs-192.md) | CamAPS FX mmol/L build comparison (189 vs 192) |
 | [docs/20-camaps-apk-189-vs-192.nb.md](docs/20-camaps-apk-189-vs-192.nb.md) | Norwegian translation of doc 20 |
 | [docs/21-camaps-liberty-availability.md](docs/21-camaps-liberty-availability.md) | CamAPS Liberty rollout and server gating |

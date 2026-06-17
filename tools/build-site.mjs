@@ -19,6 +19,10 @@ marked.setOptions({ gfm: true, breaks: false, headerIds: true, mangle: false });
 
 const NAV_SECTIONS = [
   {
+    title: 'Start here',
+    items: ['00-whats-new-in-v2'],
+  },
+  {
     title: 'Pump and BLE',
     items: ['01-hardware', '02-ble-protocol', '03-encryption', '04-key-exchange'],
   },
@@ -37,6 +41,14 @@ const NAV_SECTIONS = [
 ];
 
 const LANG_ALT = {
+  '00-whats-new-in-v2': {
+    href: '00-whats-new-in-v2.nb.html',
+    label: 'Norsk sammendrag',
+  },
+  '00-whats-new-in-v2.nb': {
+    href: '00-whats-new-in-v2.html',
+    label: 'English summary',
+  },
   '20-camaps-apk-189-vs-192': {
     href: '20-camaps-apk-189-vs-192.nb.html',
     label: 'Norsk rapport',
@@ -206,9 +218,20 @@ function buildHomePage() {
     <div class="home-hero">
       <h1>YpsoPump Research</h1>
       <p>Reverse engineering documentation and AndroidAPS driver research for the Ypsomed YpsoPump insulin pump and CamAPS FX companion app.</p>
-      <p><a class="btn" href="https://github.com/master3395/ypsopump-research">View on GitHub</a></p>
+      <p>
+        <a class="btn" href="docs/00-whats-new-in-v2.html">What is new in v2</a>
+        <a class="btn" href="https://github.com/master3395/ypsopump-research" style="margin-left:0.5rem;background:#455a64">GitHub</a>
+      </p>
     </div>
     <div class="card-grid">
+      <div class="card" style="grid-column: 1 / -1; border-color: #00796b; background: #e0f2f1">
+        <h2>What is new in v2</h2>
+        <p>Easy summary of everything this fork adds on top of SandraK82 upstream: CamAPS 189 vs 192, Liberty, G7, error codes, and the docs site.</p>
+        <ul>
+          <li><a href="docs/00-whats-new-in-v2.html"><strong>00 Summary (English)</strong></a></li>
+          <li><a href="docs/00-whats-new-in-v2.nb.html">00 Sammendrag (norsk)</a></li>
+        </ul>
+      </div>
       <div class="card">
         <h2>Pump and BLE</h2>
         <p>Hardware, protocol, encryption, and key exchange.</p>

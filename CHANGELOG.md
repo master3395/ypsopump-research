@@ -2,6 +2,12 @@
 
 All notable changes to this fork are documented here. Upstream history before the fork is preserved in git history from [SandraK82/ypsopump-research](https://github.com/SandraK82/ypsopump-research).
 
+## [2.0.1] - 17/06/2026
+
+### Added
+
+- **What's new in v2 summary** ([docs/00](docs/00-whats-new-in-v2.md), [Norwegian](docs/00-whats-new-in-v2.nb.md)): easy-to-read overview of all fork changes
+
 ## [2.0.0] - 17/06/2026
 
 ### Added
